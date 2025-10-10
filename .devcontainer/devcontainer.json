@@ -1,13 +1,47 @@
 {
   "image": "mcr.microsoft.com/devcontainers/universal:2",
+  
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {}
+    "ghcr.io/devcontainers/features/node:1": {
+      "nodeGypDependencies": true,
+      "version": "18"
+    },
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
+
   "customizations": {
     "vscode": {
       "extensions": [
-        "ms-vsliveshare.vsliveshare"
-      ]
+        "ms-vsliveshare.vsliveshare",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "ms-vscode.vscode-typescript-next",
+        "formulahendry.auto-rename-tag"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.tabSize": 2,
+        "files.autoSave": "onFocusChange"
+      }
     }
-  }
+  },
+
+  "postCreateCommand": "npm install && git config --global user.name 'Your Name' && git config --global user.email 'your.email@example.com'",
+
+  "forwardPorts": [3000, 8080, 5000],
+
+  "portsAttributes": {
+    "3000": {
+      "label": "Dev Server",
+      "onAutoForward": "openPreview"
+    },
+    "8080": {
+      "label": "Alternative Port",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "remoteUser": "vscode"
 }
