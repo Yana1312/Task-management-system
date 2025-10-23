@@ -91,6 +91,9 @@ const onRegister = async () => {
     return
   }
 
+  // Берём UID из ответа signUp — он должен совпадать с auth.users.id
+  const uid = data?.user?.id || null
+
   let passwordHash = ''
   try {
     passwordHash = await bcrypt.hash(password1.value, 10)
@@ -99,18 +102,24 @@ const onRegister = async () => {
   }
 
   try {
-    const { error: profileError } = await supabase
-      .from('users')
-      .insert({
-        username: username.value,
-        email: email.value,
-        password_hash: passwordHash,
-        avatar_url: null,
-        created_at: new Date().toISOString(),
-      })
-    if (profileError) {
-      console.warn('Profile insert error:', profileError)
-      showToast('Профиль не сохранён, попробуйте позже.', 'error')
+    if (uid) {
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: uid,
+          username: username.value,
+          email: email.value,
+          password_hash: passwordHash,
+          avatar_url: null,
+          created_at: new Date().toISOString(),
+        })
+      if (profileError) {
+        console.warn('Profile insert error:', profileError)
+        showToast('Профиль не сохранён, попробуйте позже.', 'error')
+      }
+    } else {
+      console.warn('Registration: no user.id returned; skipping profile insert now')
+      // Профиль будет создан при первом заходе на страницу Профиля, где мы жёстко вставляем id = auth.uid
     }
   } catch (e) {
     console.warn('Profile insert exception:', e)

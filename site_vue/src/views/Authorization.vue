@@ -42,6 +42,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '../lib/supabase'
+import { auth } from '../js/auth.js'
 
 const router = useRouter()
 const showPassword = ref(false)
@@ -65,6 +66,22 @@ const onLogin = async () => {
     showToast(msg, 'error')
     return
   }
+
+  try {
+    const userId = data?.user?.id || null
+    console.log('[authz] login success, supabase userId:', userId)
+    if (userId) {
+      auth.setUser(userId)
+      await auth.fetchAvatar().then((url) => {
+        console.log('[authz] fetchAvatar after login:', url)
+      }).catch((e) => console.warn('[authz] fetchAvatar error:', e))
+    } else {
+      console.warn('[authz] login success but no user.id present')
+    }
+  } catch (e) {
+    console.warn('[authz] post-login handling error:', e)
+  }
+
   router.push('/main')
 }
 
