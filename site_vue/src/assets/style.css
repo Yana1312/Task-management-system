@@ -275,6 +275,9 @@ body {
   padding: 20px;
   height: 40%;
 }
+.section p{
+  color: #E6D1A4;
+}
 
 input[type="checkbox"]:checked + label {
   border-radius: 30px;

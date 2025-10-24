@@ -15,8 +15,8 @@
         <img class="nav-icon-img" src="/resources/zadachi_icon.svg" alt="Задачи"/>
       </router-link>
 
-      <router-link to="/main#folders" class="nav-item" :class="{ active: isActiveHash('#folders') }" aria-label="Папки">
-        <img class="nav-icon-img" src="/resources/folder_icon.svg" alt="Папки"/>
+      <router-link to="/archive" class="nav-item" :class="{ active: isActivePath('/archive') }" aria-label="Архив">
+        <img class="nav-icon-img" src="/resources/folder_icon.svg" alt="Архив"/>
       </router-link>
     </div>
 

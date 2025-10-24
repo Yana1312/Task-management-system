@@ -1,6 +1,5 @@
 <template>
   <div class="container">
-
     <div class="main">
       <!-- Страница активных проектов -->
       <div class="page-content active" id="active-projects">
