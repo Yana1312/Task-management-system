@@ -18,7 +18,6 @@
         </div>
       </div>
 
-      <!-- Страница всех проектов -->
       <div class="page-content" id="all-projects">
         <div class="projects-container">
           <div class="main-header">СУЩЕСТВУЮЩИЕ ПРОЕКТЫ</div>
@@ -78,7 +77,7 @@
             <label for="task2">Сделать канбан-доску</label>
           </div>
           <div class="task-item">
-            <input type="checkbox" id="task3" checked>
+            <input type="checkbox" id="task3">
             <label for="task3">Создать дизайн</label>
           </div>
           <div class="task-item">
