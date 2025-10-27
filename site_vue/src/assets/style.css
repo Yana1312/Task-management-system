@@ -536,6 +536,7 @@ input[type="checkbox"]:checked + label {
   margin-bottom: 20px;
 }
 
+
 .card-title {
   font-size: 18px;
   font-weight: bold;
@@ -642,11 +643,10 @@ input[type="checkbox"]:checked + label {
   content: '✓';
   position: absolute;
   top: -2px;
-  background-color: #b54b11;
 }
 
 .task-item input[type="checkbox"]:checked::before {
-  content: "\\2713";
+  content: "✓";
   display: block;
   color: #480902;
   font-size: 16px;
@@ -663,7 +663,6 @@ input[type="checkbox"]:checked + label {
 
 .task-item label {
   margin-left: 5px;
-  background-color: #ce7939;
 }
 
 .section.section-spaced {
@@ -1074,6 +1073,7 @@ input[type="checkbox"]:checked + label {
   background: #b54b11;
   color: #e6d1a4;
   border-radius: 18px;
+  font-weight: bold;
   padding: 18px 24px;
   text-align: center;
   font-size: 24px;
@@ -1081,9 +1081,10 @@ input[type="checkbox"]:checked + label {
 }
 
 #boards-page .boards-sections {
-  display: grid;
+  display: flex;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
+  flex-direction: column;
   flex: 1;
   overflow-y: auto;
 }
@@ -1813,6 +1814,7 @@ input[type="checkbox"]:checked + label {
   color: #E6D1A4;
   border-radius: 18px;
   padding: 18px 24px;
+  font-weight: bold;
   text-align: center;
   font-size: 24px;
   letter-spacing: 1px;
@@ -1846,4 +1848,159 @@ input[type="checkbox"]:checked + label {
   font-weight: 700;
   cursor: pointer;
 }
-#board-page .kanban-add-btn:hover { background: #E6D1A4; }
+
+.boards-modal-large {
+  max-width: 600px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.boards-modal-header {
+  flex-shrink: 0;
+  padding: 20px;
+}
+
+.boards-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  padding-right: 15px;
+}
+
+.boards-modal-actions {
+  flex-shrink: 0;
+  padding: 20px
+}
+
+.boards-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.boards-modal-body::-webkit-scrollbar-track {
+  border-radius: 4px;
+}
+
+.boards-modal-body::-webkit-scrollbar-thumb {
+  background: #B54B11;
+  border-radius: 4px;
+}
+
+.boards-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #CE7939;
+}
+
+.boards-modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: #B54B11;
+}
+
+.boards-modal-section {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+}
+
+.boards-members-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.boards-add-member-btn {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.boards-members-list {
+  margin-top: 12px;
+}
+
+.boards-members-title {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #374151
+}
+
+.boards-member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.boards-member-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boards-member-email {
+  font-size: 14px;
+}
+
+.boards-member-badge {
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.boards-member-badge:not(.member) {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.boards-member-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.boards-member-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#boards-page .boards-card-footer .boards-btn-secondary {
+  display: block;
+    width: 50%;
+    margin: 30px auto 0 auto;
+    padding: 10px 20px;
+    background-color: #e6d1a4;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-transform: uppercase;
+}
+
+#boards-page .boards-card-footer .boards-btn-primary  {
+  display: block;
+    width: 50%;
+    margin: 30px auto 0 auto;
+    padding: 10px 20px;
+    background-color: #e6d1a4;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-transform: uppercase;
+}

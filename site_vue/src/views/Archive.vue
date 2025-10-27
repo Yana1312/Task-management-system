@@ -17,7 +17,7 @@
 
           <button class="show-more-button">ПОКАЗАТЬ БОЛЬШЕ...</button>
         </div>
-      </div>
+      </div> 
 
       <!-- Страница всех проектов -->
       <div class="page-content" id="all-projects">

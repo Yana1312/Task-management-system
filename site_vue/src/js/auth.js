@@ -18,6 +18,7 @@ export const auth = {
 
   setUser(id) {
     log('setUser called with id:', id);
+    auth.userId.value = id
     this.userId.value = id || null;
     try {
       if (id) {

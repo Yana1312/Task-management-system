@@ -11,7 +11,7 @@
         <img class="nav-icon-img" src="/resources/menu_icon.svg" alt="Домой"/>
       </router-link>
 
-      <router-link to="/main#tasks" class="nav-item" :class="{ active: isActiveHash('#tasks') }" aria-label="Задачи">
+      <router-link to="/boards" class="nav-item" :class="{ active: isActivePath('/boards') }" aria-label="Задачи">
         <img class="nav-icon-img" src="/resources/zadachi_icon.svg" alt="Задачи"/>
       </router-link>
 

@@ -5,6 +5,8 @@ import Registration from '../views/Registration.vue'
 import Main from '../views/Main.vue'
 import Profile from '../views/Profile.vue'
 import Archive from '../views/Archive.vue'
+import Boards from '../views/Boards.vue'
+import BoardDetail from '../views/BoardDetail.vue'
 
 const routes = [
   { path: '/', name: 'auth', component: Authorization },
@@ -12,6 +14,8 @@ const routes = [
   { path: '/main', name: 'main', component: Main },
   { path: '/profile', name: 'profile', component: Profile },
   { path: '/archive', name: 'archive', component: Archive },
+  { path: '/boards', name: 'boards', component: Boards },
+  { path: '/boards/:id', name: 'board', component: BoardDetail },
 ]
 
 const router = createRouter({
