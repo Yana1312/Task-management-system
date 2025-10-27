@@ -2,20 +2,26 @@
   <div class="container">
     <div class="main">
       <!-- Страница активных проектов -->
+
       <div class="page-content active" id="active-projects">
-        <div class="active-projects-main">
           <div class="projects-header">АКТИВНЫЕ ПРОЕКТЫ</div>
-          <h3 class="section-title">ЛИЧНЫЕ ПРОЕКТЫ</h3>
-          <div class="project-row"><span class="project-name">КУРС МАТЕМАТИКИ</span><span class="project-progress">52%</span></div>
-          <div class="project-row"><span class="project-name">ИЗУЧЕНИЕ PYTHON</span><span class="project-progress">75%</span></div>
+          <div class="active-projects-main">
+            <h3 class="section-title">ЛИЧНЫЕ ПРОЕКТЫ</h3>
+            <div class="project-row"><span class="project-name">КУРС МАТЕМАТИКИ</span><span class="project-progress">52%</span></div>
+            <div class="project-row"><span class="project-name">ИЗУЧЕНИЕ PYTHON</span><span class="project-progress">75%</span></div>
 
-          <h3 class="section-title">КОМАНДНЫЕ ПРОЕКТЫ</h3>
-          <div class="project-row"><span class="project-name">ВЕБ-РАЗРАБОТКА</span><span class="project-progress">30%</span></div>
-          <div class="project-row"><span class="project-name">МОБИЛЬНОЕ ПРИЛОЖЕНИЕ</span><span class="project-progress">15%</span></div>
-          <div class="project-row"><span class="project-name">ДИЗАЙН ИНТЕРФЕЙСА</span><span class="project-progress">90%</span></div>
+            <h3 class="section-title">КОМАНДНЫЕ ПРОЕКТЫ</h3>
+              <div class="project-row"><span class="project-name">ВЕБ-РАЗРАБОТКА</span><span class="project-progress">30%</span></div>
+              <div class="project-row"><span class="project-name">МОБИЛЬНОЕ ПРИЛОЖЕНИЕ</span><span class="project-progress">15%</span></div>
+              <div class="project-row"><span class="project-name">ДИЗАЙН ИНТЕРФЕЙСА</span><span class="project-progress">90%</span></div>
+              <div class="project-row"><span class="project-name">ПРОЕКТ 6</span><span class="project-progress">45%</span></div>
+              <div class="project-row"><span class="project-name">ПРОЕКТ 7</span><span class="project-progress">60%</span></div>
+              <div class="project-row"><span class="project-name">ПРОЕКТ 8</span><span class="project-progress">25%</span></div>
+              <div class="project-row"><span class="project-name">ПРОЕКТ 9</span><span class="project-progress">85%</span></div>
+              <div class="project-row"><span class="project-name">ПРОЕКТ 10</span><span class="project-progress">70%</span></div>
 
-          <button class="show-more-button">ПОКАЗАТЬ БОЛЬШЕ...</button>
-        </div>
+            <button class="show-more-button">ПОКАЗАТЬ БОЛЬШЕ...</button>
+          </div>
       </div>
 
       <!-- Страница всех проектов -->
@@ -95,28 +101,27 @@
         <p>Pomodoro</p>
         <div class="section-section">
           <div class="pomodoro-container">
-            <div class="timer-display">25:00</div>
-            <div class="session-type">РАБОЧЕЕ ВРЕМЯ</div>
+            <div class="timer-display">{{ formatTime(timeLeft) }}</div>
+            <div class="session-type">{{ isBreak ? 'ВРЕМЯ ПЕРЕРЫВА' : 'РАБОЧЕЕ ВРЕМЯ' }}</div>
             <div class="timer-controls">
-              <button class="timer-btn">Старт</button>
-              <button class="timer-btn">Пауза</button>
-              <button class="timer-btn">Сброс</button>
+              <button class="timer-btn" @click="toggleTimer">{{ isRunning ? 'Пауза' : 'Старт' }}</button>
+              <button class="timer-btn" @click="resetTimer">Сброс</button>
             </div>
             <div class="timer-settings">
               <div class="setting">
                 <div class="setting-label">Перерыв</div>
                 <div class="setting-controls">
-                  <button class="setting-btn">-</button>
-                  <div class="setting-value">5</div>
-                  <button class="setting-btn">+</button>
+                  <button class="setting-btn" @click="decrementBreak">-</button>
+                  <div class="setting-value">{{ breakTime }}</div>
+                  <button class="setting-btn"  @click="incrementBreak">+</button>
                 </div>
               </div>
               <div class="setting">
                 <div class="setting-label">Сессия</div>
                 <div class="setting-controls">
-                  <button class="setting-btn">-</button>
-                  <div class="setting-value">25</div>
-                  <button class="setting-btn">+</button>
+                  <button class="setting-btn" @click="decrementSession">-</button>
+                  <div class="setting-value">{{ sessionTime }}</div>
+                  <button class="setting-btn" @click="incrementSession">+</button>
                 </div>
               </div>
             </div>
@@ -128,7 +133,82 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const timeLeft = ref(25 * 60)
+const isRunning = ref(false)
+const isBreak = ref(false)
+const sessionTime = ref(25)
+const breakTime = ref(5)
+let timerInterval = null
+
+const formatTime = (seconds) => {
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+const toggleTimer = () => {
+  if (isRunning.value) {
+    clearInterval(timerInterval)
+    isRunning.value = false
+  } else {
+    isRunning.value = true
+    timerInterval = setInterval(() => {
+      if (timeLeft.value > 0) {
+        timeLeft.value--
+      } else {
+        clearInterval(timerInterval)
+        isRunning.value = false
+        isBreak.value = !isBreak.value
+        timeLeft.value = (isBreak.value ? breakTime.value : sessionTime.value) * 60
+      }
+    }, 1000)
+  }
+}
+
+const incrementSession = () => {
+  if (sessionTime.value < 60) {
+    sessionTime.value++
+    if (!isRunning.value && !isBreak.value) {
+      timeLeft.value = sessionTime.value * 60
+    }
+  }
+}
+
+const decrementSession = () => {
+  if (sessionTime.value > 1) {
+    sessionTime.value--
+    if (!isRunning.value && !isBreak.value) {
+      timeLeft.value = sessionTime.value * 60
+    }
+  }
+}
+
+const incrementBreak = () => {
+  if (breakTime.value < 60) {
+    breakTime.value++
+    if (!isRunning.value && isBreak.value) {
+      timeLeft.value = breakTime.value * 60
+    }
+  }
+}
+
+const decrementBreak = () => {
+  if (breakTime.value > 1) {
+    breakTime.value--
+    if (!isRunning.value && isBreak.value) {
+      timeLeft.value = breakTime.value * 60
+    }
+  }
+}
+
+const resetTimer = () => {
+  clearInterval(timerInterval)
+  isRunning.value = false
+  isBreak.value = false
+  timeLeft.value = sessionTime.value * 60
+}
 
 onMounted(() => {
   const menuItems = document.querySelectorAll('.menu-item')
@@ -145,109 +225,11 @@ onMounted(() => {
       if (targetPage) targetPage.classList.add('active')
     })
   })
+})
 
-  let timerInterval
-  let timeLeft = 25 * 60
-  let isRunning = false
-  let isBreak = false
-
-  const timerDisplay = document.querySelector('.timer-display')
-  const sessionType = document.querySelector('.session-type')
-  const startBtn = document.querySelectorAll('.timer-btn')[0]
-  const pauseBtn = document.querySelectorAll('.timer-btn')[1]
-  const resetBtn = document.querySelectorAll('.timer-btn')[2]
-  const breakValue = document.querySelectorAll('.setting-value')[0]
-  const sessionValue = document.querySelectorAll('.setting-value')[1]
-  const breakMinus = document.querySelectorAll('.setting-btn')[0]
-  const breakPlus = document.querySelectorAll('.setting-btn')[1]
-  const sessionMinus = document.querySelectorAll('.setting-btn')[2]
-  const sessionPlus = document.querySelectorAll('.setting-btn')[3]
-
-  function updateDisplay() {
-    const minutes = Math.floor(timeLeft / 60)
-    const seconds = timeLeft % 60
-    timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-  }
-
-  function startTimer() {
-    if (!isRunning) {
-      isRunning = true
-      timerInterval = setInterval(() => {
-        timeLeft--
-        updateDisplay()
-        if (timeLeft === 0) {
-          clearInterval(timerInterval)
-          isRunning = false
-          isBreak = !isBreak
-          if (isBreak) {
-            timeLeft = parseInt(breakValue.textContent) * 60
-            sessionType.textContent = 'ВРЕМЯ ПЕРЕРЫВА'
-          } else {
-            timeLeft = parseInt(sessionValue.textContent) * 60
-            sessionType.textContent = 'РАБОЧЕЕ ВРЕМЯ'
-          }
-          updateDisplay()
-        }
-      }, 1000)
-    }
-  }
-
-  function pauseTimer() {
-    if (isRunning) {
-      clearInterval(timerInterval)
-      isRunning = false
-    }
-  }
-
-  function resetTimer() {
+onUnmounted(() => {
+  if (timerInterval) {
     clearInterval(timerInterval)
-    isRunning = false
-    isBreak = false
-    timeLeft = parseInt(sessionValue.textContent) * 60
-    sessionType.textContent = 'РАБОЧЕЕ ВРЕМЯ'
-    updateDisplay()
   }
-
-  startBtn.addEventListener('click', startTimer)
-  pauseBtn.addEventListener('click', pauseTimer)
-  resetBtn.addEventListener('click', resetTimer)
-
-  breakMinus.addEventListener('click', () => {
-    let value = parseInt(breakValue.textContent)
-    if (value > 1) {
-      breakValue.textContent = value - 1
-    }
-  })
-
-  breakPlus.addEventListener('click', () => {
-    let value = parseInt(breakValue.textContent)
-    if (value < 60) {
-      breakValue.textContent = value + 1
-    }
-  })
-
-  sessionMinus.addEventListener('click', () => {
-    let value = parseInt(sessionValue.textContent)
-    if (value > 1) {
-      sessionValue.textContent = value - 1
-      if (!isRunning && !isBreak) {
-        timeLeft = value * 60
-        updateDisplay()
-      }
-    }
-  })
-
-  sessionPlus.addEventListener('click', () => {
-    let value = parseInt(sessionValue.textContent)
-    if (value < 60) {
-      sessionValue.textContent = value + 1
-      if (!isRunning && !isBreak) {
-        timeLeft = value * 60
-        updateDisplay()
-      }
-    }
-  })
-
-  updateDisplay()
 })
 </script>

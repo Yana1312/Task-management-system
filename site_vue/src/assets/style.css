@@ -213,47 +213,58 @@ body {
 .container {
   display: flex;
   width: 100%;
+  min-height: 100vh;
   gap: 20px;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 .left-sidebar {
-  width: 100px;
+  width: 200px;
   background-color: #480902;
   border-radius: 20px;
   padding: 20px;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .left-sidebar button {
   background-color: transparent;
-  border-color: transparent;
+  border: none;
   margin-bottom: 18px;
   cursor: pointer;
   transition: background-color 0.2s;
   border-radius: 10px;
-  padding: 10px;
+  padding: 15px;
+  color: #E6D1A4;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: left;
 }
 
-.left-sidebar button:hover {
+.left-sidebar button:hover,
+.left-sidebar button.active-tab {
   background-color: #CE7939;
+  color: #480902;
 }
 
 .main {
-  background-color: #480902;
+  display: flex;
   flex: 1;
+  gap: 20px;
+  background-color: #480902;
   border-radius: 20px;
-  display: grid;
   padding: 20px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .right-sidebar {
-  display: flex;
   width: 360px;
+  display: flex;
   flex-direction: column;
   gap: 20px;
+  flex-shrink: 0;
 }
 
 .right-sidebar img {
@@ -269,12 +280,18 @@ body {
   background-color: #480902;
   border-radius: 20px;
   text-align: center;
-  font-size: 30px;
+  font-size: 24px;
   display: flex;
   flex-direction: column;
   padding: 20px;
-  height: 40%;
+  min-height: 200px;
 }
+
+.section-spaced {
+  height: auto;
+  min-height: 250px;
+}
+
 .section p{
   color: #E6D1A4;
 }
@@ -285,7 +302,8 @@ input[type="checkbox"]:checked + label {
 }
 
 .section-pomodoro {
-  height: 60%;
+  height: auto;
+  min-height: 350px;
 }
 
 .section-section {
@@ -294,19 +312,24 @@ input[type="checkbox"]:checked + label {
   border-radius: 20px;
   margin-top: 15px;
   padding: 15px;
+  box-sizing: border-box;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .pomodoro-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   height: 100%;
   gap: 15px;
 }
 
+
 .timer-display {
-  font-size: 3.5rem;
+  font-size: 3rem;
   font-weight: bold;
   color: #E6D1A4;
   font-family: 'Courier New', monospace;
@@ -396,6 +419,10 @@ input[type="checkbox"]:checked + label {
 
 .page-content.active {
   display: block;
+}
+
+.projects-header {
+  border-radius: 15px;
 }
 
 .active-projects-main {
@@ -595,35 +622,60 @@ input[type="checkbox"]:checked + label {
 
 .task-item input[type="checkbox"] {
   appearance: none;
-  width: 18px;
-  height: 18px;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
   border: 2px solid #E6D1A4;
   border-radius: 4px;
-  margin-right: 10px;
+  margin-right: 12px;
   cursor: pointer;
   position: relative;
-  top: -2px;
   background-color: #B54B11;
+  flex-shrink: 0;
 }
 
 .task-item input[type="checkbox"]:checked::before {
-  content: '\\2713';
-  display: block;
+  content: '✓';
+  position: absolute;
   color: #480902;
   font-size: 16px;
-  line-height: 1;
-  text-align: center;
-  position: absolute;
-  top: 0;
-  left: 1px;
+  font-weight: bold;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .task-item input[type="checkbox"]:checked {
   background-color: #CE7939;
+  border-color: #CE7939;
+}
+
+.task-item label {
+  margin-left: 5px;
 }
 
 .section.section-spaced {
   margin-bottom: 10px;
+}
+
+@media (max-width: 1200px) {
+  .container {
+    flex-direction: column;
+  }
+  
+  .main {
+    flex-direction: column;
+  }
+  
+  .left-sidebar {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  
+  .right-sidebar {
+    width: 100%;
+  }
 }
 
 /* =================== Навбар =================== */
