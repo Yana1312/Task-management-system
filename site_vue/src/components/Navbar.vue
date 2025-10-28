@@ -18,6 +18,18 @@
       <router-link to="/archive" class="nav-item" :class="{ active: isActivePath('/archive') }" aria-label="Архив">
         <img class="nav-icon-img" src="/resources/folder_icon.svg" alt="Архив"/>
       </router-link>
+
+      <div class="nav-item pomodoro-mini" :class="{ active: pomodoro.isRunning.value }" @click="togglePomodoroModal">
+        <div class="pomodoro-mini-display">
+          <div class="pomodoro-time">{{ formatTime(pomodoro.timeLeft.value) }}</div>
+          <div class="pomodoro-status">{{ pomodoro.isBreak.value ? 'Отдых' : 'Работа' }}</div>
+          <div class="pomodoro-controls-mini">
+            <button class="pomodoro-btn-mini" @click.stop="pomodoro.toggleTimer">
+              {{ pomodoro.isRunning.value ? '⏸️' : '▶️' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="nav-footer">
@@ -25,17 +37,50 @@
         <img class="nav-icon-img" src="/resources/settings.svg" alt="Настройки"/>
       </router-link>
     </div>
+
+    <div v-if="showPomodoroModal" class="pomodoro-modal-overlay" @click="closePomodoroModal">
+      <div class="pomodoro-modal" @click.stop>
+        <div class="pomodoro-modal-header">
+          <h3>Pomodoro Таймер</h3>
+          <button class="pomodoro-modal-close" @click="closePomodoroModal">×</button>
+        </div>
+        <div class="pomodoro-modal-content">
+          <PomodoroTimer />
+        </div>
+      </div>
+    </div>
   </nav>
 </template>
 
 <script setup>
-import { onMounted, computed, watch } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { auth } from '../js/auth.js'
+import { pomodoroStore } from '../js/pomodoro.js'
+import PomodoroTimer from '../components/PomodoroTimer.vue'
 
 const route = useRoute()
+const showPomodoroModal = ref(false)
+
 const isActivePath = (path) => route.path === path
 const isActiveHash = (hash) => route.path === '/main' && route.hash === hash
+
+const pomodoro = pomodoroStore
+
+const formatTime = (seconds) => {
+  if (isNaN(seconds) || seconds < 0) return '00:00'
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+const togglePomodoroModal = () => {
+  showPomodoroModal.value = !showPomodoroModal.value
+}
+
+const closePomodoroModal = () => {
+  showPomodoroModal.value = false
+}
 
 onMounted(() => {
   console.log('[navbar] mounted userId:', auth.userId.value, 'avatarUrl:', auth.avatarUrl.value)
@@ -44,17 +89,11 @@ onMounted(() => {
       console.log('[navbar] fetchAvatar resolved url:', url)
     }).catch((e) => console.warn('[navbar] fetchAvatar error:', e))
   }
+  
+  pomodoro.requestNotificationPermission()
 })
 
 const avatarSrc = computed(() => auth.avatarUrl.value || auth.PLACEHOLDER_AVATAR)
-
-watch(() => auth.userId.value, (nv, ov) => {
-  console.log('[navbar] userId changed:', ov, '->', nv)
-})
-
-watch(() => auth.avatarUrl.value, (nv, ov) => {
-  console.log('[navbar] avatarUrl changed:', ov, '->', nv)
-})
 
 const onAvatarError = (e) => {
   console.warn('[navbar] img error, fallback to placeholder')

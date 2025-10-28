@@ -2,26 +2,20 @@
   <div class="container">
     <div class="main">
       <!-- Страница активных проектов -->
-
       <div class="page-content active" id="active-projects">
-          <div class="projects-header">АКТИВНЫЕ ПРОЕКТЫ</div>
-          <div class="active-projects-main">
-            <h3 class="section-title">ЛИЧНЫЕ ПРОЕКТЫ</h3>
-            <div class="project-row"><span class="project-name">КУРС МАТЕМАТИКИ</span><span class="project-progress">52%</span></div>
-            <div class="project-row"><span class="project-name">ИЗУЧЕНИЕ PYTHON</span><span class="project-progress">75%</span></div>
+        <div class="projects-header">АКТИВНЫЕ ПРОЕКТЫ</div>
+        <div class="active-projects-main">
+          <h3 class="section-title">ЛИЧНЫЕ ПРОЕКТЫ</h3>
+          <div class="project-row"><span class="project-name">КУРС МАТЕМАТИКИ</span><span class="project-progress">52%</span></div>
+          <div class="project-row"><span class="project-name">ИЗУЧЕНИЕ PYTHON</span><span class="project-progress">75%</span></div>
 
-            <h3 class="section-title">КОМАНДНЫЕ ПРОЕКТЫ</h3>
-              <div class="project-row"><span class="project-name">ВЕБ-РАЗРАБОТКА</span><span class="project-progress">30%</span></div>
-              <div class="project-row"><span class="project-name">МОБИЛЬНОЕ ПРИЛОЖЕНИЕ</span><span class="project-progress">15%</span></div>
-              <div class="project-row"><span class="project-name">ДИЗАЙН ИНТЕРФЕЙСА</span><span class="project-progress">90%</span></div>
-              <div class="project-row"><span class="project-name">ПРОЕКТ 6</span><span class="project-progress">45%</span></div>
-              <div class="project-row"><span class="project-name">ПРОЕКТ 7</span><span class="project-progress">60%</span></div>
-              <div class="project-row"><span class="project-name">ПРОЕКТ 8</span><span class="project-progress">25%</span></div>
-              <div class="project-row"><span class="project-name">ПРОЕКТ 9</span><span class="project-progress">85%</span></div>
-              <div class="project-row"><span class="project-name">ПРОЕКТ 10</span><span class="project-progress">70%</span></div>
-
-            <button class="show-more-button">ПОКАЗАТЬ БОЛЬШЕ...</button>
-          </div>
+          <h3 class="section-title">КОМАНДНЫЕ ПРОЕКТЫ</h3>
+          <div class="project-row"><span class="project-name">ВЕБ-РАЗРАБОТКА</span><span class="project-progress">30%</span></div>
+          <div class="project-row"><span class="project-name">МОБИЛЬНОЕ ПРИЛОЖЕНИЕ</span><span class="project-progress">15%</span></div>
+          <div class="project-row"><span class="project-name">ДИЗАЙН ИНТЕРФЕЙСА</span><span class="project-progress">90%</span></div>
+          
+          <button class="show-more-button">ПОКАЗАТЬ БОЛЬШЕ...</button>
+        </div>
       </div>
 
       <div class="page-content" id="all-projects">
@@ -36,13 +30,6 @@
                   <div>
                     <div class="lesson-title">ПЕРВЫЙ УРОК</div>
                     <div class="lesson-time">ОСТАЛОСЬ ВРЕМЕНИ: 2 ДНЯ</div>
-                  </div>
-                  <i class="fas fa-pencil-alt edit-icon"></i>
-                </div>
-                <div class="lesson-item">
-                  <div>
-                    <div class="lesson-title">ВТОРОЙ УРОК</div>
-                    <div class="lesson-time">ОСТАЛОСЬ ВРЕМЕНИ: 10 ДНЕЙ</div>
                   </div>
                   <i class="fas fa-pencil-alt edit-icon"></i>
                 </div>
@@ -86,45 +73,12 @@
             <input type="checkbox" id="task3">
             <label for="task3">Создать дизайн</label>
           </div>
-          <div class="task-item">
-            <input type="checkbox" id="task4">
-            <label for="task4">Написать документацию</label>
-          </div>
-          <div class="task-item">
-            <input type="checkbox" id="task5">
-            <label for="task5">Протестировать функционал</label>
-          </div>
         </div>
       </div>
       <div class="section section-pomodoro">
         <p>Pomodoro</p>
         <div class="section-section">
-          <div class="pomodoro-container">
-            <div class="timer-display">{{ formatTime(timeLeft) }}</div>
-            <div class="session-type">{{ isBreak ? 'ВРЕМЯ ПЕРЕРЫВА' : 'РАБОЧЕЕ ВРЕМЯ' }}</div>
-            <div class="timer-controls">
-              <button class="timer-btn" @click="toggleTimer">{{ isRunning ? 'Пауза' : 'Старт' }}</button>
-              <button class="timer-btn" @click="resetTimer">Сброс</button>
-            </div>
-            <div class="timer-settings">
-              <div class="setting">
-                <div class="setting-label">Перерыв</div>
-                <div class="setting-controls">
-                  <button class="setting-btn" @click="decrementBreak">-</button>
-                  <div class="setting-value">{{ breakTime }}</div>
-                  <button class="setting-btn"  @click="incrementBreak">+</button>
-                </div>
-              </div>
-              <div class="setting">
-                <div class="setting-label">Сессия</div>
-                <div class="setting-controls">
-                  <button class="setting-btn" @click="decrementSession">-</button>
-                  <div class="setting-value">{{ sessionTime }}</div>
-                  <button class="setting-btn" @click="incrementSession">+</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <PomodoroTimer />
         </div>
       </div>
     </div>
@@ -132,82 +86,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-
-const timeLeft = ref(25 * 60)
-const isRunning = ref(false)
-const isBreak = ref(false)
-const sessionTime = ref(25)
-const breakTime = ref(5)
-let timerInterval = null
-
-const formatTime = (seconds) => {
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-}
-
-const toggleTimer = () => {
-  if (isRunning.value) {
-    clearInterval(timerInterval)
-    isRunning.value = false
-  } else {
-    isRunning.value = true
-    timerInterval = setInterval(() => {
-      if (timeLeft.value > 0) {
-        timeLeft.value--
-      } else {
-        clearInterval(timerInterval)
-        isRunning.value = false
-        isBreak.value = !isBreak.value
-        timeLeft.value = (isBreak.value ? breakTime.value : sessionTime.value) * 60
-      }
-    }, 1000)
-  }
-}
-
-const incrementSession = () => {
-  if (sessionTime.value < 60) {
-    sessionTime.value++
-    if (!isRunning.value && !isBreak.value) {
-      timeLeft.value = sessionTime.value * 60
-    }
-  }
-}
-
-const decrementSession = () => {
-  if (sessionTime.value > 1) {
-    sessionTime.value--
-    if (!isRunning.value && !isBreak.value) {
-      timeLeft.value = sessionTime.value * 60
-    }
-  }
-}
-
-const incrementBreak = () => {
-  if (breakTime.value < 60) {
-    breakTime.value++
-    if (!isRunning.value && isBreak.value) {
-      timeLeft.value = breakTime.value * 60
-    }
-  }
-}
-
-const decrementBreak = () => {
-  if (breakTime.value > 1) {
-    breakTime.value--
-    if (!isRunning.value && isBreak.value) {
-      timeLeft.value = breakTime.value * 60
-    }
-  }
-}
-
-const resetTimer = () => {
-  clearInterval(timerInterval)
-  isRunning.value = false
-  isBreak.value = false
-  timeLeft.value = sessionTime.value * 60
-}
+import { onMounted } from 'vue'
+import PomodoroTimer from '../components/PomodoroTimer.vue'
 
 onMounted(() => {
   const menuItems = document.querySelectorAll('.menu-item')
@@ -224,11 +104,5 @@ onMounted(() => {
       if (targetPage) targetPage.classList.add('active')
     })
   })
-})
-
-onUnmounted(() => {
-  if (timerInterval) {
-    clearInterval(timerInterval)
-  }
 })
 </script>
