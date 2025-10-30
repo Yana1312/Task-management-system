@@ -17,8 +17,20 @@
               >
                 <div class="item-title">{{ t.title }}</div>
                 <div class="item-desc" v-if="t.description">{{ t.description }}</div>
-                <div v-if="getTaskMembers(t.id).length > 0" class="item-members">
-                  <span class="member-count">{{ getTaskMembers(t.id).length }} участников</span>
+                
+                <!-- Добавлено: отображение срока выполнения -->
+                <div v-if="t.due_date" class="item-due-date" :class="getDueDateClass(t.due_date)">
+                  <span class="due-date-icon">📅</span>
+                  {{ formatDueDate(t.due_date) }}
+                </div>
+                
+                <div class="item-meta">
+                  <span v-if="t.priority" :class="['priority-badge', `priority-${t.priority}`]">
+                    {{ getPriorityText(t.priority) }}
+                  </span>
+                  <span v-if="getTaskMembers(t.id).length > 0" class="member-count">
+                    {{ getTaskMembers(t.id).length }} участников
+                  </span>
                 </div>
               </div>
               <div v-if="(tasksByColumn[col.id] || []).length === 0" class="kanban-empty">Нет задач</div>
@@ -67,6 +79,30 @@
                 </option>
               </select>
             </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Приоритет</label>
+              <select v-model="newTask.priority" class="boards-modal-input">
+                <option value="low">Низкий</option>
+                <option value="medium">Средний</option>
+                <option value="high">Высокий</option>
+                <option value="critical">Критический</option>
+              </select>
+            </div>
+
+            <!-- Добавлено: поле выбора срока выполнения -->
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Срок выполнения</label>
+              <input 
+                type="date" 
+                v-model="newTask.due_date" 
+                class="boards-modal-input" 
+                :min="new Date().toISOString().split('T')[0]"
+              />
+              <div class="boards-modal-hint">
+                Оставьте пустым, если срок не установлен
+              </div>
+            </div>
           </div>
 
           <!-- Секция добавления участников -->
@@ -84,7 +120,6 @@
               </div>
             </div>
 
-            <!-- ИСПРАВЛЕНО: используем currentTaskMembers вместо taskMembers -->
             <div v-if="currentTaskMembers.length > 0" class="boards-members-list">
               <div class="boards-members-title">Участники задачи:</div>
               <div 
@@ -128,23 +163,84 @@
     <div v-if="showTaskModal" class="boards-modal-overlay" @click="closeTaskModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
-          <h2 class="boards-modal-title">{{ selectedTask?.title }}</h2>
+          <h2 class="boards-modal-title">Редактирование задачи</h2>
           <button class="boards-modal-close" @click="closeTaskModal">×</button>
         </div>
         
         <div class="boards-modal-body">
           <div class="boards-modal-section">
+            <!-- Изменено: поле названия стало редактируемым -->
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Название задачи *</label>
+              <input 
+                v-model="selectedTask.title" 
+                class="boards-modal-input" 
+                placeholder="Введите название задачи"
+                @input="debouncedUpdateTitle"
+                :disabled="updating"
+              />
+            </div>
+            
+            <!-- Изменено: поле описания стало редактируемым -->
             <div class="boards-modal-field">
               <label class="boards-modal-label">Описание</label>
-              <div class="task-description">
-                {{ selectedTask?.description || 'Нет описания' }}
+              <textarea 
+                v-model="selectedTask.description" 
+                class="boards-modal-textarea" 
+                placeholder="Описание задачи"
+                @input="debouncedUpdateDescription"
+                :disabled="updating"
+              ></textarea>
+            </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Статус</label>
+              <select 
+                v-model="selectedTask.column_id" 
+                class="boards-modal-input"
+                @change="updateTaskStatus"
+              >
+                <option v-for="col in columns" :key="col.id" :value="col.id">
+                  {{ col.title }}
+                </option>
+              </select>
+            </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Приоритет</label>
+              <select 
+                v-model="selectedTask.priority" 
+                class="boards-modal-input"
+                @change="updateTaskPriority"
+              >
+                <option value="low">Низкий</option>
+                <option value="medium">Средний</option>
+                <option value="high">Высокий</option>
+                <option value="critical">Критический</option>
+              </select>
+            </div>
+
+            <!-- Добавлено: редактирование срока выполнения -->
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Срок выполнения</label>
+              <input 
+                type="date" 
+                v-model="selectedTask.due_date" 
+                class="boards-modal-input"
+                @change="updateTaskDueDate"
+              />
+              <div class="boards-modal-hint">
+                <span v-if="selectedTask?.due_date" :class="getDueDateClass(selectedTask.due_date)">
+                  {{ getDueDateText(selectedTask.due_date) }}
+                </span>
+                <span v-else>Срок не установлен</span>
               </div>
             </div>
 
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Колонка</label>
-              <div class="task-column">
-                {{ getColumnTitle(selectedTask?.column_id) }}
+              <label class="boards-modal-label">Дата создания</label>
+              <div class="task-created-date">
+                {{ formatDate(selectedTask.created_at) }}
               </div>
             </div>
           </div>
@@ -165,6 +261,19 @@
               </div>
             </div>
           </div>
+
+          <!-- Кнопки действий -->
+          <div class="boards-modal-section">
+            <div class="boards-modal-actions">
+              <button 
+                class="boards-modal-btn boards-modal-btn-danger" 
+                @click="deleteTask"
+                :disabled="deleting"
+              >
+                {{ deleting ? 'Удаление...' : 'Удалить задачу' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -175,13 +284,6 @@
     </div>
   </div>
 </template>
-
-
-
-
-
-
-
 
 <script setup>
 import { onMounted, ref, computed, watch } from 'vue'
@@ -201,17 +303,25 @@ const currentUser = ref(null)
 const showModal = ref(false)
 const showTaskModal = ref(false)
 const creating = ref(false)
+const deleting = ref(false)
+const updating = ref(false)
 
 // Данные для форм
 const newTask = ref({
   title: '',
   description: '',
-  column_id: null
+  column_id: null,
+  priority: 'medium',
+  due_date: null
 })
 const newMemberEmail = ref('')
 const currentTaskMembers = ref([])
 const selectedTask = ref(null)
 const selectedTaskMembers = ref([])
+
+// Таймеры для дебаунса
+let titleUpdateTimeout = null
+let descriptionUpdateTimeout = null
 
 // Уведомления
 const toast = ref({ visible: false, type: 'success', message: '' })
@@ -233,7 +343,6 @@ const getCurrentUser = async () => {
       currentUser.value = user
       console.log('Текущий пользователь:', user)
       
-      // Проверяем, есть ли пользователь в таблице users
       const { data: userData, error } = await supabase
         .from('users')
         .select('id')
@@ -242,14 +351,13 @@ const getCurrentUser = async () => {
       
       if (error) {
         console.log('Пользователь не найден в таблице users, создаем...')
-        // Создаем пользователя в таблице users
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({
             id: user.id,
             email: user.email,
             username: user.email.split('@')[0],
-            password_hash: 'auth_user_no_password', // Фиктивное значение
+            password_hash: 'auth_user_no_password',
             created_at: new Date().toISOString()
           })
           .select()
@@ -298,11 +406,77 @@ const removeMember = (index) => {
   currentTaskMembers.value.splice(index, 1)
 }
 
+// Методы для работы со сроками
+const formatDueDate = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short'
+  })
+}
+
+const getDueDateClass = (dateString) => {
+  if (!dateString) return ''
+  
+  const dueDate = new Date(dateString)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  const timeDiff = dueDate.getTime() - today.getTime()
+  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24))
+  
+  if (daysDiff < 0) {
+    return 'due-date-overdue'
+  } else if (daysDiff === 0) {
+    return 'due-date-today'
+  } else if (daysDiff <= 3) {
+    return 'due-date-soon'
+  }
+  return 'due-date-normal'
+}
+
+const getDueDateText = (dateString) => {
+  if (!dateString) return ''
+  
+  const dueDate = new Date(dateString)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  const timeDiff = dueDate.getTime() - today.getTime()
+  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24))
+  
+  if (daysDiff < 0) {
+    return `Просрочено на ${Math.abs(daysDiff)} дн.`
+  } else if (daysDiff === 0) {
+    return 'Сегодня'
+  } else if (daysDiff === 1) {
+    return 'Завтра'
+  } else if (daysDiff <= 3) {
+    return `Через ${daysDiff} дн.`
+  }
+  return `Осталось ${daysDiff} дн.`
+}
+
+// Дебаунс функции для обновления
+const debouncedUpdateTitle = () => {
+  clearTimeout(titleUpdateTimeout)
+  titleUpdateTimeout = setTimeout(() => {
+    updateTaskTitle()
+  }, 1000)
+}
+
+const debouncedUpdateDescription = () => {
+  clearTimeout(descriptionUpdateTimeout)
+  descriptionUpdateTimeout = setTimeout(() => {
+    updateTaskDescription()
+  }, 1000)
+}
+
 // Методы модальных окон
 const openModal = () => {
   showModal.value = true
   if (columns.value.length > 0 && !newTask.value.column_id) {
-    // Автоматически выбираем первую колонку (обычно "В планах")
     newTask.value.column_id = columns.value[0].id
   }
 }
@@ -312,14 +486,16 @@ const closeModal = () => {
   newTask.value = {
     title: '',
     description: '',
-    column_id: columns.value.length > 0 ? columns.value[0].id : null
+    column_id: columns.value.length > 0 ? columns.value[0].id : null,
+    priority: 'medium',
+    due_date: null
   }
   currentTaskMembers.value = []
   newMemberEmail.value = ''
 }
 
 const openTaskDetails = async (task) => {
-  selectedTask.value = task
+  selectedTask.value = { ...task }
   await loadTaskMembers(task.id)
   showTaskModal.value = true
 }
@@ -328,6 +504,9 @@ const closeTaskModal = () => {
   showTaskModal.value = false
   selectedTask.value = null
   selectedTaskMembers.value = []
+  // Очищаем таймеры при закрытии модалки
+  clearTimeout(titleUpdateTimeout)
+  clearTimeout(descriptionUpdateTimeout)
 }
 
 // Вспомогательные методы
@@ -340,6 +519,21 @@ const getTaskMembers = (taskId) => {
   return taskMembers.value.filter(member => member.task_id === taskId)
 }
 
+const formatDate = (dateString) => {
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleDateString('ru-RU')
+}
+
+const getPriorityText = (priority) => {
+  const priorities = {
+    low: 'Низкий',
+    medium: 'Средний',
+    high: 'Высокий',
+    critical: 'Критический'
+  }
+  return priorities[priority] || priority
+}
+
 // Основные методы
 const createTask = async () => {
   if (!newTask.value.title.trim()) return
@@ -349,25 +543,23 @@ const createTask = async () => {
     console.log('Создание задачи для доски:', boardId.value)
     console.log('Данные задачи:', newTask.value)
     
-    // Проверяем, что выбрана колонка
     if (!newTask.value.column_id) {
       throw new Error('Не выбрана колонка для задачи')
     }
 
-    // Проверяем, что есть текущий пользователь
     if (!currentUser.value) {
       throw new Error('Пользователь не авторизован')
     }
 
-    // 1. Создаем задачу с обязательными полями
     const taskData = {
       title: newTask.value.title,
       description: newTask.value.description || null,
       column_id: newTask.value.column_id,
       position: tasks.value.length,
       creator_id: currentUser.value.id,
-      assignee_id: currentUser.value.id, // Назначаем на текущего пользователя
-      priority: 'medium', // Обязательное поле
+      assignee_id: currentUser.value.id,
+      priority: newTask.value.priority || 'medium',
+      due_date: newTask.value.due_date || null,
       created_at: new Date().toISOString()
     }
 
@@ -386,11 +578,9 @@ const createTask = async () => {
 
     console.log('Задача создана:', taskDataResult)
 
-    // 2. Добавляем участников если есть
     if (currentTaskMembers.value.length > 0) {
       console.log('Добавление участников:', currentTaskMembers.value)
       
-      // Сначала находим ID пользователей по email
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select('id, email')
@@ -424,7 +614,6 @@ const createTask = async () => {
       }
     }
 
-    // 3. Обновляем локальный список задач
     tasks.value.push(taskDataResult)
     
     closeModal()
@@ -445,6 +634,193 @@ const createTask = async () => {
     showToast(errorMessage, 'error')
   } finally {
     creating.value = false
+  }
+}
+
+// Обновление названия задачи
+const updateTaskTitle = async () => {
+  if (!selectedTask.value || !selectedTask.value.title.trim()) {
+    showToast('Название задачи не может быть пустым', 'error')
+    return
+  }
+  
+  updating.value = true
+  try {
+    console.log('Обновление названия задачи:', selectedTask.value.title)
+    
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        title: selectedTask.value.title,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedTask.value.id)
+
+    if (error) {
+      console.error('Ошибка обновления названия:', error)
+      throw error
+    }
+
+    // Обновляем локальные данные
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].title = selectedTask.value.title
+    }
+
+    console.log('Название задачи успешно обновлено')
+    showToast('Название задачи обновлено!', 'success')
+  } catch (error) {
+    console.error('Ошибка обновления названия:', error)
+    showToast('Ошибка при обновлении названия', 'error')
+  } finally {
+    updating.value = false
+  }
+}
+
+// Обновление описания задачи
+const updateTaskDescription = async () => {
+  if (!selectedTask.value) return
+  
+  updating.value = true
+  try {
+    console.log('Обновление описания задачи')
+    
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        description: selectedTask.value.description || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedTask.value.id)
+
+    if (error) {
+      console.error('Ошибка обновления описания:', error)
+      throw error
+    }
+
+    // Обновляем локальные данные
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].description = selectedTask.value.description
+    }
+
+    console.log('Описание задачи успешно обновлено')
+    showToast('Описание задачи обновлено!', 'success')
+  } catch (error) {
+    console.error('Ошибка обновления описания:', error)
+    showToast('Ошибка при обновлении описания', 'error')
+  } finally {
+    updating.value = false
+  }
+}
+
+// Обновление статуса задачи
+const updateTaskStatus = async () => {
+  if (!selectedTask.value) return
+  
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        column_id: selectedTask.value.column_id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedTask.value.id)
+
+    if (error) throw error
+
+    // Обновляем локальные данные
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].column_id = selectedTask.value.column_id
+    }
+
+    showToast('Статус задачи обновлен!', 'success')
+  } catch (error) {
+    console.error('Ошибка обновления статуса:', error)
+    showToast('Ошибка при обновлении статуса', 'error')
+  }
+}
+
+// Обновление приоритета задачи
+const updateTaskPriority = async () => {
+  if (!selectedTask.value) return
+  
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        priority: selectedTask.value.priority,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedTask.value.id)
+
+    if (error) throw error
+
+    // Обновляем локальные данные
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].priority = selectedTask.value.priority
+    }
+
+    showToast('Приоритет задачи обновлен!', 'success')
+  } catch (error) {
+    console.error('Ошибка обновления приоритета:', error)
+    showToast('Ошибка при обновлении приоритета', 'error')
+  }
+}
+
+// Обновление срока выполнения
+const updateTaskDueDate = async () => {
+  if (!selectedTask.value) return
+  
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        due_date: selectedTask.value.due_date,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedTask.value.id)
+
+    if (error) throw error
+
+    // Обновляем локальные данные
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].due_date = selectedTask.value.due_date
+    }
+
+    showToast('Срок выполнения обновлен!', 'success')
+  } catch (error) {
+    console.error('Ошибка обновления срока:', error)
+    showToast('Ошибка при обновлении срока', 'error')
+  }
+}
+
+// Удаление задачи
+const deleteTask = async () => {
+  if (!selectedTask.value) return
+  
+  deleting.value = true
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', selectedTask.value.id)
+
+    if (error) throw error
+
+    // Удаляем из локального списка
+    tasks.value = tasks.value.filter(t => t.id !== selectedTask.value.id)
+
+    closeTaskModal()
+    showToast('Задача удалена!', 'success')
+  } catch (error) {
+    console.error('Ошибка удаления задачи:', error)
+    showToast('Ошибка при удалении задачи', 'error')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -483,7 +859,6 @@ const loadColumns = async () => {
     columns.value = data || []
     console.log('Колонки загружены:', columns.value)
     
-    // Если есть колонки, устанавливаем первую как выбранную по умолчанию
     if (columns.value.length > 0 && !newTask.value.column_id) {
       newTask.value.column_id = columns.value[0].id
     }
@@ -546,9 +921,7 @@ const loadTaskMembers = async (taskId = null) => {
 const loadData = async () => {
   loading.value = true
   try {
-    // Получаем текущего пользователя
     await getCurrentUser()
-    // Затем загружаем остальные данные
     await loadBoard()
     await loadColumns()
     await loadTasks()
@@ -573,20 +946,9 @@ onMounted(() => {
 })
 </script>
 
-
-
-
-
-
-
-
-
-
 <style scoped>
-/* Стили остаются без изменений */
 .container {
   min-height: 100vh;
-
 }
 
 .main {
@@ -642,7 +1004,7 @@ onMounted(() => {
 
 .kanban-item {
   background: #f8f9fa;
-  border: 1px solid #9c8e71;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 10px;
@@ -660,19 +1022,91 @@ onMounted(() => {
   font-weight: 500;
   margin-bottom: 8px;
   color: #e6d1a4;
-  font-size: 18px;
-  text-wrap: wrap;
 }
 
 .item-desc {
-  font-size: 18px;
+  font-size: 14px;
   color: #ffffff;
   margin-bottom: 8px;
   line-height: 1.4;
 }
 
-.item-members {
+/* Добавлено: стили для срока выполнения */
+.item-due-date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.due-date-icon {
+  font-size: 11px;
+}
+
+.due-date-normal {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.due-date-soon {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.due-date-today {
+  background: #fed7aa;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+  font-weight: 600;
+}
+
+.due-date-overdue {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  font-weight: 600;
+}
+
+.item-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-top: 8px;
+}
+
+.priority-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.priority-low {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.priority-medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.priority-high {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.priority-critical {
+  background: #fecaca;
+  color: #7f1d1d;
+  font-weight: bold;
 }
 
 .member-count {
@@ -823,10 +1257,38 @@ onMounted(() => {
   border-color: #B54B11;
 }
 
+.boards-modal-input:disabled,
+.boards-modal-textarea:disabled {
+  background-color: #f9fafb;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .boards-modal-textarea {
   min-height: 80px;
   resize: vertical;
   font-family: inherit;
+}
+
+.boards-modal-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.boards-modal-hint .due-date-overdue {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.boards-modal-hint .due-date-today {
+  color: #c2410c;
+  font-weight: 500;
+}
+
+.boards-modal-hint .due-date-soon {
+  color: #92400e;
+  font-weight: 500;
 }
 
 /* Стили для участников */
@@ -947,6 +1409,20 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
+.boards-modal-btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.boards-modal-btn-danger:hover {
+  background: #dc2626;
+}
+
+.boards-modal-btn-danger:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
 /* Стили для просмотра задачи */
 .task-description {
   padding: 12px;
@@ -956,10 +1432,10 @@ onMounted(() => {
   line-height: 1.5;
 }
 
-.task-column {
+.task-created-date {
   padding: 8px 12px;
-  background: #e0e7ff;
-  color: #3730a3;
+  background: #f3f4f6;
+  color: #374151;
   border-radius: 6px;
   display: inline-block;
   font-weight: 500;
