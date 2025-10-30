@@ -35,6 +35,16 @@
         </div>
 
         <div class="field-row">
+          <label>Telegram</label>
+          <input v-model="tgUsername" type="text" placeholder="Ваш tg юзернейм (без @)" />
+          <div class="field-actions">
+            <button class="btn btn-primary" @click="saveTelegramUsername">Подключить</button>
+            <button class="btn" v-if="tgUsername" @click="disconnectTelegram">Отключить</button>
+          </div>
+          <p class="muted" style="color: white">Бот авторизует вас по этому юзернейму.</p>
+        </div>
+
+        <div class="field-row">
           <label>Пароль</label>
           <div class="field-actions">
             <button class="btn" @click="openPasswordModal">Сменить пароль</button>
@@ -104,6 +114,7 @@ const username = ref('')
 const newEmail = ref('')
 const selectedAvatar = ref(null)
 let avatarsDirHandle = null
+const tgUsername = ref('')
 
 const showEmailModal = ref(false)
 const showPasswordModal = ref(false)
@@ -264,6 +275,7 @@ async function loadProfile() {
 
     console.log('[Profile] Loaded user data:', row)
     username.value = row?.username || ''
+    tgUsername.value = row?.tg_username || ''
 
     if (row?.avatar_url) {
       auth.avatarUrl.value = row.avatar_url
@@ -306,6 +318,56 @@ function openEmailModal() {
   showEmailModal.value = true
 }
 function closeEmailModal() { showEmailModal.value = false }
+
+async function saveTelegramUsername() {
+  const { data: userData, error } = await supabase.auth.getUser()
+  if (error) { alert('Ошибка авторизации'); return }
+  const uid = userData?.user?.id
+  const email = userData?.user?.email
+
+  const next = (tgUsername.value || '').trim().replace(/^@+/, '').toLowerCase()
+
+  const { data: updatedById, error: updErr1 } = await supabase
+    .from('users')
+    .update({ tg_username: next })
+    .eq('id', uid)
+    .select()
+  if (updErr1) { alert('Ошибка: ' + updErr1.message); return }
+
+  if (!updatedById || updatedById.length === 0) {
+    const { error: updErr2 } = await supabase
+      .from('users')
+      .update({ tg_username: next })
+      .eq('email', email)
+    if (updErr2) { alert('Ошибка: ' + updErr2.message); return }
+  }
+
+  alert('Telegram подключён')
+}
+
+async function disconnectTelegram() {
+  const { data: userData, error } = await supabase.auth.getUser()
+  if (error) { alert('Ошибка авторизации'); return }
+  const uid = userData?.user?.id
+  const email = userData?.user?.email
+
+  const { data: updatedById, error: updErr1 } = await supabase
+    .from('users')
+    .update({ tg_username: '' })
+    .eq('id', uid)
+    .select()
+  if (updErr1) { alert('Ошибка: ' + updErr1.message); return }
+
+  if (!updatedById || updatedById.length === 0) {
+    const { error: updErr2 } = await supabase
+      .from('users')
+      .update({ tg_username: '' })
+      .eq('email', email)
+    if (updErr2) { alert('Ошибка: ' + updErr2.message); return }
+  }
+  tgUsername.value = ''
+  alert('Telegram отключён')
+}
 
 async function sendEmailChange() {
   const nextEmail = (emailForm.value.email || '').trim()
