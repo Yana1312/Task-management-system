@@ -13,9 +13,24 @@
                 v-for="t in tasksByColumn[col.id] || []" 
                 :key="t.id" 
                 class="kanban-item"
+                :class="{ 'task-completed': t.is_completed }"
                 @click="openTaskDetails(t)"
               >
-                <div class="item-title">{{ t.title }}</div>
+                <div class="item-header">
+                  <div class="item-title">{{ t.title }}</div>
+                  <div class="task-status-controls">
+                    <button 
+                      v-if="canChangeTaskStatus(t)"
+                      class="status-toggle-btn"
+                      :class="t.is_completed ? 'completed' : 'incomplete'"
+                      @click.stop="toggleTaskStatus(t)"
+                      :title="t.is_completed ? 'Отметить как не выполненную' : 'Отметить как выполненную'"
+                    >
+                      {{ t.is_completed ? '✓' : '○' }}
+                    </button>
+                  </div>
+                </div>
+                
                 <div class="item-desc" v-if="t.description">{{ t.description }}</div>
                 
                 <div v-if="t.due_date" class="item-due-date" :class="getDueDateClass(t.due_date)">
@@ -36,6 +51,9 @@
                   <span v-if="t.assignee_email" class="assignee-badge">
                     👤 {{ t.assignee_email }}
                   </span>
+                  <span v-if="t.is_completed" class="status-badge completed">
+                    ✓ Выполнено
+                  </span>
                 </div>
               </div>
               <div v-if="(tasksByColumn[col.id] || []).length === 0" class="kanban-empty">Нет задач</div>
@@ -47,7 +65,7 @@
       <button class="boards-create-btn" @click="openModal" aria-label="Создать задачу">+</button>
     </div>
 
-    <!-- Модальное окно создания задачи -->
+
     <div v-if="showModal" class="boards-modal-overlay" @click="closeModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
@@ -58,7 +76,7 @@
         <div class="boards-modal-body">
           <div class="boards-modal-section">
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Название задачи *</label>
+              <label class="boards-modal-label">Название задачи</label>
               <input 
                 v-model="newTask.title" 
                 class="boards-modal-input" 
@@ -137,7 +155,7 @@
       </div>
     </div>
 
-    <!-- Модальное окно редактирования задачи -->
+
     <div v-if="showTaskModal" class="boards-modal-overlay" @click="closeTaskModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
@@ -170,7 +188,30 @@
             </div>
 
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Статус</label>
+              <label class="boards-modal-label">Статус выполнения</label>
+              <div class="task-status-control">
+                <button 
+                  class="status-toggle-btn-large"
+                  :class="selectedTask.is_completed ? 'completed' : 'incomplete'"
+                  @click="toggleSelectedTaskStatus"
+                  :disabled="!canChangeTaskStatus(selectedTask)"
+                >
+                  <span class="status-icon">{{ selectedTask.is_completed ? '✓' : '○' }}</span>
+                  <span class="status-text">
+                    {{ selectedTask.is_completed ? 'Задача выполнена' : 'Задача не выполнена' }}
+                  </span>
+                </button>
+                <div class="boards-modal-hint" v-if="canChangeTaskStatus(selectedTask)">
+                  {{ selectedTask.is_completed ? 'Нажмите, чтобы отметить как не выполненную' : 'Нажмите, чтобы отметить как выполненную' }}
+                </div>
+                <div class="boards-modal-hint" v-else>
+                  Только исполнитель задачи может менять статус выполнения
+                </div>
+              </div>
+            </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Статус (колонка)</label>
               <select 
                 v-model="selectedTask.column_id" 
                 class="boards-modal-input"
@@ -244,7 +285,7 @@
             </div>
           </div>
 
-          <div class="boards-modal-section" v-if="isTaskCompleted">
+          <div class="boards-modal-section" v-if="selectedTask.is_completed">
             <div class="boards-modal-field">
               <label class="boards-modal-label">Прикрепленные файлы</label>
               <div class="file-upload-section">
@@ -376,6 +417,11 @@ const isTaskCompleted = computed(() => {
   const doneColumn = columns.value.find(col => col.title.toLowerCase().includes('готово'))
   return doneColumn && selectedTask.value.column_id === doneColumn.id
 })
+
+const canChangeTaskStatus = (task) => {
+  if (!currentUser.value || !task) return false
+  return task.assignee_id === currentUser.value.id
+}
 
 const getCurrentUser = async () => {
   try {
@@ -543,6 +589,46 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+const toggleTaskStatus = async (task) => {
+  if (!canChangeTaskStatus(task)) {
+    showToast('Только исполнитель задачи может менять статус выполнения', 'warning')
+    return
+  }
+
+  try {
+    const newStatus = !task.is_completed
+    
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        is_completed: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', task.id)
+
+    if (error) throw error
+
+    const taskIndex = tasks.value.findIndex(t => t.id === task.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].is_completed = newStatus
+    }
+
+    if (selectedTask.value && selectedTask.value.id === task.id) {
+      selectedTask.value.is_completed = newStatus
+    }
+
+    showToast(`Задача отмечена как ${newStatus ? 'выполненная' : 'не выполненная'}`, 'success')
+  } catch (error) {
+    console.error('Ошибка изменения статуса задачи:', error)
+    showToast('Ошибка при изменении статуса задачи', 'error')
+  }
+}
+
+const toggleSelectedTaskStatus = async () => {
+  if (!selectedTask.value) return
+  await toggleTaskStatus(selectedTask.value)
+}
+
 const createTask = async () => {
   if (!newTask.value.title.trim() || !newTask.value.assignee_email) return
   
@@ -570,6 +656,7 @@ const createTask = async () => {
       assignee_id: assigneeUser.id,
       priority: newTask.value.priority || 'medium',
       due_date: newTask.value.due_date || null,
+      is_completed: false,
       created_at: new Date().toISOString()
     }
 
@@ -596,7 +683,7 @@ const createTask = async () => {
     tasks.value.push(updatedTask)
     
     closeModal()
-    showToast('Задача успешно создана для исполнителя "' + newTask.value.assignee_email + '"!', 'success')
+    showToast('Задача успешно создана для исполнителя', 'success')
     
   } catch (error) {
     let errorMessage = 'Ошибка при создании задачи'
@@ -936,8 +1023,8 @@ const loadTaskAttachmentsForAllTasks = async () => {
 }
 
 const triggerFileInput = () => {
-  if (!isTaskCompleted.value) {
-    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+  if (!selectedTask.value?.is_completed) {
+    showToast('Файлы можно прикреплять только к выполненным задачам', 'warning')
     return
   }
   fileInput.value?.click()
@@ -947,8 +1034,8 @@ const handleFileSelect = async (event) => {
   const files = Array.from(event.target.files)
   if (files.length === 0) return
   
-  if (!isTaskCompleted.value) {
-    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+  if (!selectedTask.value?.is_completed) {
+    showToast('Файлы можно прикреплять только к выполненным задачам', 'warning')
     return
   }
   
@@ -961,8 +1048,8 @@ const handleFileDrop = async (event) => {
   const files = Array.from(event.dataTransfer.files)
   if (files.length === 0) return
   
-  if (!isTaskCompleted.value) {
-    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+  if (!selectedTask.value?.is_completed) {
+    showToast('Файлы можно прикреплять только к выполненным задачам', 'warning')
     return
   }
   
@@ -1182,10 +1269,109 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(181, 75, 17, 0.1);
 }
 
+.kanban-item.task-completed {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+  opacity: 0.8;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
 .item-title {
   font-weight: 500;
-  margin-bottom: 8px;
   color: #e6d1a4;
+  flex: 1;
+  margin-right: 10px;
+}
+
+.task-status-controls {
+  flex-shrink: 0;
+}
+
+.status-toggle-btn {
+  background: none;
+  border: 2px solid #d1d5db;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.status-toggle-btn.incomplete {
+  color: #6b7280;
+  border-color: #d1d5db;
+}
+
+.status-toggle-btn.completed {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+.status-toggle-btn:hover {
+  transform: scale(1.1);
+}
+
+.status-toggle-btn.incomplete:hover {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.status-toggle-btn-large {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.status-toggle-btn-large.incomplete {
+  color: #6b7280;
+  border-color: #d1d5db;
+}
+
+.status-toggle-btn-large.completed {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+.status-toggle-btn-large:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.status-toggle-btn-large:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-icon {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.status-text {
+  font-weight: 500;
+}
+
+.task-status-control {
+  margin-bottom: 15px;
 }
 
 .item-desc {
@@ -1296,6 +1482,18 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.status-badge {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.status-badge.completed {
+  background: #d1fae5;
+  color: #065f46;
 }
 
 .kanban-empty {
@@ -1700,6 +1898,16 @@ onMounted(() => {
   
   .boards-modal-actions {
     flex-direction: column;
+  }
+  
+  .item-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .task-status-controls {
+    margin-top: 8px;
+    align-self: flex-end;
   }
 }
 </style>

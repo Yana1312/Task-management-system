@@ -160,7 +160,7 @@
                         @click="removeMember(index)"
                         title="Удалить"
                       >
-                        ×удалиорио
+                        ×
                       </button>
                     </div>
                   </div>
@@ -370,7 +370,7 @@ const cardBg = '#B54B11'
 
 const toast = ref({ visible: false, type: 'success', message: '' })
 
-// Computed properties
+
 const personalBoards = computed(() => {
   const uid = auth.userId.value
   return boards.value.filter(b => {
@@ -425,7 +425,7 @@ const openEditModal = async (board) => {
     created_at: board.created_at
   }
   
-  // Загружаем участников для редактируемой доски
+
   await loadBoardMembersForEdit(board.id)
   showEditModal.value = true
 }
@@ -590,14 +590,12 @@ const addEditMember = async () => {
 
     if (addError) throw addError
 
-    // Обновляем локальный список
     editingBoardMembers.value.push({
       user_id: user.id,
       email: email,
       role: 'member'
     })
 
-    // Обновляем общий список участников
     await loadBoardMembers()
 
     editMemberEmail.value = ''
@@ -619,13 +617,11 @@ const removeEditMember = async (userId) => {
     return
   }
 
-  // Не позволяем удалить самого себя
   if (userId === currentUserId.value) {
     showToast('Нельзя удалить самого себя из проекта', 'error')
     return
   }
 
-  // Не позволяем удалить создателя проекта
   const board = boards.value.find(b => b.id === editingBoard.value.id)
   if (board && board.creator_id === userId) {
     showToast('Нельзя удалить создателя проекта', 'error')
@@ -641,10 +637,8 @@ const removeEditMember = async (userId) => {
 
     if (error) throw error
 
-    // Обновляем локальный список
     editingBoardMembers.value = editingBoardMembers.value.filter(m => m.user_id !== userId)
 
-    // Обновляем общий список участников
     await loadBoardMembers()
 
     showToast('Участник удален из проекта', 'success')
@@ -666,7 +660,6 @@ const promoteEditMemberToAdmin = async (userId) => {
   }
 
   try {
-    // Сначала сбрасываем всех администраторов до участников, КРОМЕ текущего пользователя
     const currentUserId = auth.userId.value
     const adminMembers = editingBoardMembers.value.filter(m => m.role === 'admin' && m.user_id !== currentUserId)
     
@@ -680,7 +673,6 @@ const promoteEditMemberToAdmin = async (userId) => {
       if (error) throw error
     }
 
-    // Назначаем нового администратора
     const { error } = await supabase
       .from('user_roles')
       .update({ role_id: roles.value.admin })
@@ -689,7 +681,6 @@ const promoteEditMemberToAdmin = async (userId) => {
 
     if (error) throw error
 
-    // Обновляем локальный список
     editingBoardMembers.value.forEach(member => {
       if (member.role === 'admin' && member.user_id !== currentUserId) {
         member.role = 'member'
@@ -699,7 +690,6 @@ const promoteEditMemberToAdmin = async (userId) => {
       }
     })
 
-    // Обновляем общий список участников
     await loadBoardMembers()
 
     showToast('Новый администратор назначен', 'success')
@@ -871,9 +861,8 @@ async function addBoardMembers(boardId, members) {
       }
     ]
 
-    // Для остальных участников назначаем роль member
     members.forEach(member => {
-      const roleId = roles.value.member // Всегда member для дополнительных участников
+      const roleId = roles.value.member
       membersToAdd.push({
         board_id: boardId,
         user_id: member.userId,
@@ -965,7 +954,6 @@ async function updateBoard() {
       boards.value[boardIndex].background = editingBoard.value.background
     }
 
-    // Обновляем данные участников
     await loadBoardMembers()
 
     closeEditModal()
@@ -991,9 +979,7 @@ watch(showCreateModal, async (v) => {
 })
 </script>
 
-
 <style scoped>
-/* Добавляем новые стили для модального окна редактирования */
 .boards-info-list {
   background: #f8f9fa;
   border-radius: 8px;
@@ -1043,7 +1029,6 @@ watch(showCreateModal, async (v) => {
   border: 1px solid #bbdefb;
 }
 
-/* Остальные стили остаются без изменений */
 .boards-card-footer {
   display: flex;
   flex-direction: column;
@@ -1068,78 +1053,4 @@ watch(showCreateModal, async (v) => {
 .boards-btn-secondary:hover {
   background: #5a6268;
 }
-.boards-info-list {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 16px;
-}
-.boards-member-badge.current {
-  background: #e3f2fd;
-  color: #1976d2;
-  border: 1px solid #bbdefb;
-}
-.boards-info-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #e9ecef;
-}
-
-.boards-info-item:last-child {
-  border-bottom: none;
-}
-
-.boards-info-label {
-  font-weight: 500;
-  color: #495057;
-}
-
-.boards-info-value {
-  color: #6c757d;
-}
-
-.boards-member-hint {
-  font-size: 12px;
-  color: #6c757d;
-  font-style: italic;
-}
-
-.boards-members-empty {
-  text-align: center;
-  color: #6c757d;
-  font-style: italic;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 6px;
-  border: 1px dashed #dee2e6;
-}
-
-/* Остальные стили остаются без изменений */
-.boards-card-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
-}
-
-.boards-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.boards-btn-secondary {
-  background: #6c757d;
-  color: white;
-}
-
-.boards-btn-secondary:hover {
-  background: #5a6268;
-}
-
-/* Остальные существующие стили... */
 </style>
