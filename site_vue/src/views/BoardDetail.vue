@@ -1473,28 +1473,4 @@ onMounted(() => {
     opacity: 1;
   }
 }
-
-/* Адаптивность */
-@media (max-width: 768px) {
-  .kanban-wrap {
-    flex-direction: column;
-  }
-  
-  .kanban-column {
-    min-width: auto;
-  }
-  
-  .boards-modal {
-    width: 95%;
-    margin: 20px;
-  }
-  
-  .boards-members-add {
-    flex-direction: column;
-  }
-  
-  .boards-modal-actions {
-    flex-direction: column;
-  }
-}
 </style>
