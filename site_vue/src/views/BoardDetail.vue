@@ -556,7 +556,6 @@ const createTask = async () => {
       throw new Error('Пользователь не авторизован')
     }
 
-    // Находим ID исполнителя по email
     const assigneeUser = availableUsers.value.find(user => user.email === newTask.value.assignee_email)
     if (!assigneeUser) {
       throw new Error('Выбранный исполнитель не найден')
@@ -588,7 +587,6 @@ const createTask = async () => {
       throw taskError
     }
 
-    // Обновляем задачу с email исполнителя и создателя
     const updatedTask = {
       ...taskDataResult,
       assignee_email: taskDataResult.assignee?.email,
@@ -710,7 +708,6 @@ const updateTaskAssignee = async () => {
   if (!selectedTask.value) return
   
   try {
-    // Находим ID нового исполнителя по email
     const assigneeUser = availableUsers.value.find(user => user.email === selectedTask.value.assignee_email)
     if (!assigneeUser) {
       showToast('Выбранный исполнитель не найден', 'error')
@@ -727,7 +724,6 @@ const updateTaskAssignee = async () => {
 
     if (error) throw error
 
-    // Обновляем локальные данные задачи
     const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].assignee_id = assigneeUser.id
@@ -796,13 +792,11 @@ const deleteTask = async () => {
   
   deleting.value = true
   try {
-    // Сначала удаляем вложения
     await supabase
       .from('attachments')
       .delete()
       .eq('task_id', selectedTask.value.id)
 
-    // Затем удаляем саму задачу
     const { error } = await supabase
       .from('tasks')
       .delete()
@@ -877,7 +871,6 @@ const loadTasks = async () => {
       
       if (error) throw error
       
-      // Преобразуем данные для удобства использования
       tasks.value = (data || []).map(task => ({
         ...task,
         assignee_email: task.assignee?.email,
@@ -1119,7 +1112,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Стили остаются без изменений */
 .container {
   min-height: 100vh;
 }
