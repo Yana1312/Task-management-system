@@ -18,10 +18,15 @@
                 <div class="item-title">{{ t.title }}</div>
                 <div class="item-desc" v-if="t.description">{{ t.description }}</div>
                 
-                <!-- Добавлено: отображение срока выполнения -->
                 <div v-if="t.due_date" class="item-due-date" :class="getDueDateClass(t.due_date)">
                   <span class="due-date-icon">📅</span>
                   {{ formatDueDate(t.due_date) }}
+                </div>
+                
+                <div v-if="t.attachments && t.attachments.length > 0" class="item-attachments">
+                  <div class="attachments-count">
+                    📎 {{ t.attachments.length }} файл(ов)
+                  </div>
                 </div>
                 
                 <div class="item-meta">
@@ -39,11 +44,9 @@
         </div>
       </div>
       
-      <!-- Кнопка создания -->
       <button class="boards-create-btn" @click="openModal" aria-label="Создать задачу">+</button>
     </div>
 
-    <!-- Модальное окно создания задачи -->
     <div v-if="showModal" class="boards-modal-overlay" @click="closeModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
@@ -90,7 +93,6 @@
               </select>
             </div>
 
-            <!-- Добавлено: поле выбора срока выполнения -->
             <div class="boards-modal-field">
               <label class="boards-modal-label">Срок выполнения</label>
               <input 
@@ -105,7 +107,6 @@
             </div>
           </div>
 
-          <!-- Секция добавления участников -->
           <div class="boards-modal-section">
             <div class="boards-modal-field">
               <label class="boards-modal-label">Добавить участников</label>
@@ -159,7 +160,6 @@
       </div>
     </div>
 
-    <!-- Модальное окно просмотра задачи -->
     <div v-if="showTaskModal" class="boards-modal-overlay" @click="closeTaskModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
@@ -169,7 +169,6 @@
         
         <div class="boards-modal-body">
           <div class="boards-modal-section">
-            <!-- Изменено: поле названия стало редактируемым -->
             <div class="boards-modal-field">
               <label class="boards-modal-label">Название задачи *</label>
               <input 
@@ -181,7 +180,6 @@
               />
             </div>
             
-            <!-- Изменено: поле описания стало редактируемым -->
             <div class="boards-modal-field">
               <label class="boards-modal-label">Описание</label>
               <textarea 
@@ -220,7 +218,6 @@
               </select>
             </div>
 
-            <!-- Добавлено: редактирование срока выполнения -->
             <div class="boards-modal-field">
               <label class="boards-modal-label">Срок выполнения</label>
               <input 
@@ -245,6 +242,66 @@
             </div>
           </div>
 
+          <div class="boards-modal-section" v-if="isTaskCompleted">
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Прикрепленные файлы</label>
+              <div class="file-upload-section">
+                <div class="file-upload-area" 
+                     @click="triggerFileInput"
+                     @drop="handleFileDrop"
+                     @dragover.prevent
+                     @dragenter.prevent>
+                  <input 
+                    type="file" 
+                    ref="fileInput"
+                    @change="handleFileSelect"
+                    multiple
+                    style="display: none"
+                  />
+                  <div class="file-upload-content">
+                    <div class="file-upload-icon">📎</div>
+                    <div class="file-upload-text">
+                      Перетащите файлы сюда или нажмите для выбора
+                    </div>
+                    <div class="file-upload-hint">
+                      Максимальный размер: 10MB
+                    </div>
+                  </div>
+                </div>
+                
+                <div v-if="selectedTask.attachments && selectedTask.attachments.length > 0" class="attachments-list">
+                  <div class="attachments-title">Прикрепленные файлы:</div>
+                  <div 
+                    v-for="attachment in selectedTask.attachments" 
+                    :key="attachment.id"
+                    class="attachment-item"
+                  >
+                    <div class="attachment-info">
+                      <span class="attachment-name">{{ attachment.filename }}</span>
+                      <span class="attachment-size">{{ formatFileSize(attachment.file_size) }}</span>
+                    </div>
+                    <div class="attachment-actions">
+                      <button 
+                        class="attachment-btn attachment-download"
+                        @click="downloadAttachment(attachment)"
+                        title="Скачать"
+                      >
+                        ⬇️
+                      </button>
+                      <button 
+                        class="attachment-btn attachment-delete"
+                        @click="deleteAttachment(attachment.id)"
+                        title="Удалить"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="boards-modal-section" v-if="selectedTaskMembers.length > 0">
             <div class="boards-modal-field">
               <label class="boards-modal-label">Участники задачи</label>
@@ -262,7 +319,6 @@
             </div>
           </div>
 
-          <!-- Кнопки действий -->
           <div class="boards-modal-section">
             <div class="boards-modal-actions">
               <button 
@@ -278,7 +334,6 @@
       </div>
     </div>
 
-    <!-- Toast уведомления -->
     <div v-if="toast.visible" :class="['toast', `toast-${toast.type}`]">
       {{ toast.message }}
     </div>
@@ -299,14 +354,13 @@ const taskMembers = ref([])
 const loading = ref(true)
 const currentUser = ref(null)
 
-// Модальные окна
 const showModal = ref(false)
 const showTaskModal = ref(false)
 const creating = ref(false)
 const deleting = ref(false)
 const updating = ref(false)
+const uploading = ref(false)
 
-// Данные для форм
 const newTask = ref({
   title: '',
   description: '',
@@ -319,14 +373,13 @@ const currentTaskMembers = ref([])
 const selectedTask = ref(null)
 const selectedTaskMembers = ref([])
 
-// Таймеры для дебаунса
+const fileInput = ref(null)
+
 let titleUpdateTimeout = null
 let descriptionUpdateTimeout = null
 
-// Уведомления
 const toast = ref({ visible: false, type: 'success', message: '' })
 
-// Computed
 const tasksByColumn = computed(() => {
   const grouped = {}
   columns.value.forEach(col => {
@@ -335,13 +388,17 @@ const tasksByColumn = computed(() => {
   return grouped
 })
 
-// Получаем текущего пользователя
+const isTaskCompleted = computed(() => {
+  if (!selectedTask.value) return false
+  const doneColumn = columns.value.find(col => col.title.toLowerCase().includes('готово'))
+  return doneColumn && selectedTask.value.column_id === doneColumn.id
+})
+
 const getCurrentUser = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       currentUser.value = user
-      console.log('Текущий пользователь:', user)
       
       const { data: userData, error } = await supabase
         .from('users')
@@ -350,7 +407,6 @@ const getCurrentUser = async () => {
         .single()
       
       if (error) {
-        console.log('Пользователь не найден в таблице users, создаем...')
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({
@@ -362,14 +418,6 @@ const getCurrentUser = async () => {
           })
           .select()
           .single()
-        
-        if (createError) {
-          console.error('Ошибка создания пользователя:', createError)
-        } else {
-          console.log('Пользователь создан в таблице users:', newUser)
-        }
-      } else {
-        console.log('Пользователь найден в таблице users:', userData)
       }
     }
   } catch (error) {
@@ -377,7 +425,6 @@ const getCurrentUser = async () => {
   }
 }
 
-// Методы для участников
 const addMember = () => {
   const email = newMemberEmail.value.trim().toLowerCase()
   
@@ -406,7 +453,6 @@ const removeMember = (index) => {
   currentTaskMembers.value.splice(index, 1)
 }
 
-// Методы для работы со сроками
 const formatDueDate = (dateString) => {
   if (!dateString) return ''
   const date = new Date(dateString)
@@ -458,7 +504,6 @@ const getDueDateText = (dateString) => {
   return `Осталось ${daysDiff} дн.`
 }
 
-// Дебаунс функции для обновления
 const debouncedUpdateTitle = () => {
   clearTimeout(titleUpdateTimeout)
   titleUpdateTimeout = setTimeout(() => {
@@ -473,7 +518,6 @@ const debouncedUpdateDescription = () => {
   }, 1000)
 }
 
-// Методы модальных окон
 const openModal = () => {
   showModal.value = true
   if (columns.value.length > 0 && !newTask.value.column_id) {
@@ -497,6 +541,7 @@ const closeModal = () => {
 const openTaskDetails = async (task) => {
   selectedTask.value = { ...task }
   await loadTaskMembers(task.id)
+  await loadTaskAttachments(task.id)
   showTaskModal.value = true
 }
 
@@ -504,12 +549,10 @@ const closeTaskModal = () => {
   showTaskModal.value = false
   selectedTask.value = null
   selectedTaskMembers.value = []
-  // Очищаем таймеры при закрытии модалки
   clearTimeout(titleUpdateTimeout)
   clearTimeout(descriptionUpdateTimeout)
 }
 
-// Вспомогательные методы
 const getColumnTitle = (columnId) => {
   const column = columns.value.find(col => col.id === columnId)
   return column ? column.title : 'Неизвестно'
@@ -534,15 +577,19 @@ const getPriorityText = (priority) => {
   return priorities[priority] || priority
 }
 
-// Основные методы
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 const createTask = async () => {
   if (!newTask.value.title.trim()) return
   
   creating.value = true
   try {
-    console.log('Создание задачи для доски:', boardId.value)
-    console.log('Данные задачи:', newTask.value)
-    
     if (!newTask.value.column_id) {
       throw new Error('Не выбрана колонка для задачи')
     }
@@ -563,8 +610,6 @@ const createTask = async () => {
       created_at: new Date().toISOString()
     }
 
-    console.log('Отправляемые данные задачи:', taskData)
-
     const { data: taskDataResult, error: taskError } = await supabase
       .from('tasks')
       .insert(taskData)
@@ -572,24 +617,16 @@ const createTask = async () => {
       .single()
 
     if (taskError) {
-      console.error('Ошибка создания задачи:', taskError)
       throw taskError
     }
 
-    console.log('Задача создана:', taskDataResult)
-
     if (currentTaskMembers.value.length > 0) {
-      console.log('Добавление участников:', currentTaskMembers.value)
-      
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select('id, email')
         .in('email', currentTaskMembers.value)
 
-      if (usersError) {
-        console.error('Ошибка поиска пользователей:', usersError)
-        showToast('Ошибка при поиске пользователей', 'error')
-      } else if (users && users.length > 0) {
+      if (!usersError && users && users.length > 0) {
         const membersToInsert = users.map(user => ({
           task_id: taskDataResult.id,
           user_id: user.id,
@@ -601,16 +638,9 @@ const createTask = async () => {
           .from('task_members')
           .insert(membersToInsert)
 
-        if (membersError) {
-          console.error('Ошибка добавления участников:', membersError)
-          showToast('Задача создана, но участники не добавлены', 'error')
-        } else {
+        if (!membersError) {
           taskMembers.value.push(...membersToInsert)
-          console.log('Участники добавлены')
         }
-      } else {
-        console.log('Участники не найдены в системе')
-        showToast('Задача создана, но участники не найдены в системе', 'warning')
       }
     }
 
@@ -620,8 +650,6 @@ const createTask = async () => {
     showToast('Задача успешно создана в колонке "' + getColumnTitle(newTask.value.column_id) + '"!', 'success')
     
   } catch (error) {
-    console.error('Error creating task:', error)
-    
     let errorMessage = 'Ошибка при создании задачи'
     if (error.message.includes('creator_id') || error.message.includes('assignee_id')) {
       errorMessage = 'Проблема с привязкой пользователя. Убедитесь, что вы авторизованы.'
@@ -637,7 +665,6 @@ const createTask = async () => {
   }
 }
 
-// Обновление названия задачи
 const updateTaskTitle = async () => {
   if (!selectedTask.value || !selectedTask.value.title.trim()) {
     showToast('Название задачи не может быть пустым', 'error')
@@ -646,8 +673,6 @@ const updateTaskTitle = async () => {
   
   updating.value = true
   try {
-    console.log('Обновление названия задачи:', selectedTask.value.title)
-    
     const { error } = await supabase
       .from('tasks')
       .update({ 
@@ -657,34 +682,27 @@ const updateTaskTitle = async () => {
       .eq('id', selectedTask.value.id)
 
     if (error) {
-      console.error('Ошибка обновления названия:', error)
       throw error
     }
 
-    // Обновляем локальные данные
     const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].title = selectedTask.value.title
     }
 
-    console.log('Название задачи успешно обновлено')
     showToast('Название задачи обновлено!', 'success')
   } catch (error) {
-    console.error('Ошибка обновления названия:', error)
     showToast('Ошибка при обновлении названия', 'error')
   } finally {
     updating.value = false
   }
 }
 
-// Обновление описания задачи
 const updateTaskDescription = async () => {
   if (!selectedTask.value) return
   
   updating.value = true
   try {
-    console.log('Обновление описания задачи')
-    
     const { error } = await supabase
       .from('tasks')
       .update({ 
@@ -694,27 +712,22 @@ const updateTaskDescription = async () => {
       .eq('id', selectedTask.value.id)
 
     if (error) {
-      console.error('Ошибка обновления описания:', error)
       throw error
     }
 
-    // Обновляем локальные данные
     const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].description = selectedTask.value.description
     }
 
-    console.log('Описание задачи успешно обновлено')
     showToast('Описание задачи обновлено!', 'success')
   } catch (error) {
-    console.error('Ошибка обновления описания:', error)
     showToast('Ошибка при обновлении описания', 'error')
   } finally {
     updating.value = false
   }
 }
 
-// Обновление статуса задачи
 const updateTaskStatus = async () => {
   if (!selectedTask.value) return
   
@@ -729,7 +742,6 @@ const updateTaskStatus = async () => {
 
     if (error) throw error
 
-    // Обновляем локальные данные
     const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].column_id = selectedTask.value.column_id
@@ -737,12 +749,10 @@ const updateTaskStatus = async () => {
 
     showToast('Статус задачи обновлен!', 'success')
   } catch (error) {
-    console.error('Ошибка обновления статуса:', error)
     showToast('Ошибка при обновлении статуса', 'error')
   }
 }
 
-// Обновление приоритета задачи
 const updateTaskPriority = async () => {
   if (!selectedTask.value) return
   
@@ -757,7 +767,6 @@ const updateTaskPriority = async () => {
 
     if (error) throw error
 
-    // Обновляем локальные данные
     const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].priority = selectedTask.value.priority
@@ -765,12 +774,10 @@ const updateTaskPriority = async () => {
 
     showToast('Приоритет задачи обновлен!', 'success')
   } catch (error) {
-    console.error('Ошибка обновления приоритета:', error)
     showToast('Ошибка при обновлении приоритета', 'error')
   }
 }
 
-// Обновление срока выполнения
 const updateTaskDueDate = async () => {
   if (!selectedTask.value) return
   
@@ -785,7 +792,6 @@ const updateTaskDueDate = async () => {
 
     if (error) throw error
 
-    // Обновляем локальные данные
     const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].due_date = selectedTask.value.due_date
@@ -793,12 +799,10 @@ const updateTaskDueDate = async () => {
 
     showToast('Срок выполнения обновлен!', 'success')
   } catch (error) {
-    console.error('Ошибка обновления срока:', error)
     showToast('Ошибка при обновлении срока', 'error')
   }
 }
 
-// Удаление задачи
 const deleteTask = async () => {
   if (!selectedTask.value) return
   
@@ -811,13 +815,11 @@ const deleteTask = async () => {
 
     if (error) throw error
 
-    // Удаляем из локального списка
     tasks.value = tasks.value.filter(t => t.id !== selectedTask.value.id)
 
     closeTaskModal()
     showToast('Задача удалена!', 'success')
   } catch (error) {
-    console.error('Ошибка удаления задачи:', error)
     showToast('Ошибка при удалении задачи', 'error')
   } finally {
     deleting.value = false
@@ -829,7 +831,6 @@ const showToast = (message, type = 'success') => {
   setTimeout(() => { toast.value.visible = false }, 3500)
 }
 
-// Загрузка данных
 const loadBoard = async () => {
   try {
     const { data, error } = await supabase
@@ -840,9 +841,7 @@ const loadBoard = async () => {
     
     if (error) throw error
     board.value = data
-    console.log('Доска загружена:', board.value)
   } catch (error) {
-    console.error('Error loading board:', error)
     showToast('Ошибка загрузки доски', 'error')
   }
 }
@@ -857,13 +856,11 @@ const loadColumns = async () => {
     
     if (error) throw error
     columns.value = data || []
-    console.log('Колонки загружены:', columns.value)
     
     if (columns.value.length > 0 && !newTask.value.column_id) {
       newTask.value.column_id = columns.value[0].id
     }
   } catch (error) {
-    console.error('Error loading columns:', error)
     columns.value = []
   }
 }
@@ -881,12 +878,12 @@ const loadTasks = async () => {
       
       if (error) throw error
       tasks.value = data || []
-      console.log('Задачи загружены:', tasks.value)
+      
+      await loadTaskAttachmentsForAllTasks()
     } else {
       tasks.value = []
     }
   } catch (error) {
-    console.error('Error loading tasks:', error)
     tasks.value = []
   }
 }
@@ -909,12 +906,209 @@ const loadTaskMembers = async (taskId = null) => {
       }
     }
   } catch (error) {
-    console.error('Error loading task members:', error)
     if (taskId) {
       selectedTaskMembers.value = []
     } else {
       taskMembers.value = []
     }
+  }
+}
+
+const loadTaskAttachments = async (taskId) => {
+  try {
+    const { data, error } = await supabase
+      .from('attachments')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('uploaded_at', { ascending: false })
+    
+    if (error) throw error
+    
+    if (selectedTask.value && selectedTask.value.id === taskId) {
+      selectedTask.value.attachments = data || []
+    }
+    
+    return data || []
+  } catch (error) {
+    console.error('Ошибка загрузки вложений:', error)
+    return []
+  }
+}
+
+const loadTaskAttachmentsForAllTasks = async () => {
+  try {
+    if (tasks.value.length === 0) return
+    
+    const taskIds = tasks.value.map(t => t.id)
+    const { data, error } = await supabase
+      .from('attachments')
+      .select('*')
+      .in('task_id', taskIds)
+    
+    if (error) throw error
+    
+    const attachmentsByTask = {}
+    data?.forEach(attachment => {
+      if (!attachmentsByTask[attachment.task_id]) {
+        attachmentsByTask[attachment.task_id] = []
+      }
+      attachmentsByTask[attachment.task_id].push(attachment)
+    })
+    
+    tasks.value.forEach(task => {
+      task.attachments = attachmentsByTask[task.id] || []
+    })
+  } catch (error) {
+    console.error('Ошибка загрузки вложений для всех задач:', error)
+  }
+}
+
+const triggerFileInput = () => {
+  if (!isTaskCompleted.value) {
+    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+    return
+  }
+  fileInput.value?.click()
+}
+
+const handleFileSelect = async (event) => {
+  const files = Array.from(event.target.files)
+  if (files.length === 0) return
+  
+  if (!isTaskCompleted.value) {
+    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+    return
+  }
+  
+  await uploadFiles(files)
+  event.target.value = ''
+}
+
+const handleFileDrop = async (event) => {
+  event.preventDefault()
+  const files = Array.from(event.dataTransfer.files)
+  if (files.length === 0) return
+  
+  if (!isTaskCompleted.value) {
+    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+    return
+  }
+  
+  await uploadFiles(files)
+}
+
+const uploadFiles = async (files) => {
+  if (!selectedTask.value) return
+  
+  uploading.value = true
+  
+  try {
+    for (const file of files) {
+      if (file.size > 50 * 1024 * 1024) {
+        showToast(`Файл "${file.name}" слишком большой (макс. 50MB)`, 'error')
+        continue
+      }
+      
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      
+      const filePath = `/filesusers/${fileName}`
+      
+      try {
+        const { data: attachmentData, error: attachmentError } = await supabase
+          .from('attachments')
+          .insert({
+            task_id: selectedTask.value.id,
+            filename: file.name,
+            file_path: filePath,
+            file_size: file.size,
+            uploaded_by_id: currentUser.value.id,
+            uploaded_at: new Date().toISOString()
+          })
+          .select()
+          .single()
+        
+        if (attachmentError) {
+          console.error('Ошибка сохранения информации о файле:', attachmentError)
+          showToast(`Ошибка сохранения файла "${file.name}": ${attachmentError.message}`, 'error')
+          continue
+        }
+        
+        if (!selectedTask.value.attachments) {
+          selectedTask.value.attachments = []
+        }
+        selectedTask.value.attachments.push(attachmentData)
+        
+        const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+        if (taskIndex !== -1) {
+          if (!tasks.value[taskIndex].attachments) {
+            tasks.value[taskIndex].attachments = []
+          }
+          tasks.value[taskIndex].attachments.push(attachmentData)
+        }
+        
+        showToast(`Информация о файле "${file.name}" успешно сохранена`, 'success')
+        
+      } catch (fileError) {
+        console.error('Ошибка сохранения файла:', fileError)
+        showToast(`Ошибка при сохранении файла "${file.name}": ${fileError.message}`, 'error')
+        continue
+      }
+    }
+  } catch (error) {
+    console.error('Общая ошибка при загрузке файлов:', error)
+    showToast('Ошибка при загрузке файлов: ' + error.message, 'error')
+  } finally {
+    uploading.value = false
+  }
+}
+
+const downloadAttachment = async (attachment) => {
+  try {
+    const message = `Файл "${attachment.filename}" был прикреплен к задаче, но не может быть скачан через веб-интерфейс.\n\nИнформация о файле:\n- Название: ${attachment.filename}\n- Размер: ${formatFileSize(attachment.file_size)}\n- Путь: ${attachment.file_path}\n\nДля работы с файлами используйте локальное приложение.`
+    
+    const blob = new Blob([message], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `info-${attachment.filename}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    showToast('Информация о файле скачана', 'info')
+  } catch (error) {
+    console.error('Ошибка скачивания файла:', error)
+    showToast('Ошибка при получении информации о файле', 'error')
+  }
+}
+
+const deleteAttachment = async (attachmentId) => {
+  try {
+    const attachment = selectedTask.value.attachments.find(a => a.id === attachmentId)
+    if (!attachment) return
+    
+    const { error: dbError } = await supabase
+      .from('attachments')
+      .delete()
+      .eq('id', attachmentId)
+    
+    if (dbError) {
+      throw dbError
+    }
+    
+    selectedTask.value.attachments = selectedTask.value.attachments.filter(a => a.id !== attachmentId)
+    
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].attachments = tasks.value[taskIndex].attachments.filter(a => a.id !== attachmentId)
+    }
+    
+    showToast('Информация о файле удалена', 'success')
+  } catch (error) {
+    console.error('Ошибка удаления файла:', error)
+    showToast('Ошибка при удалении информации о файле', 'error')
   }
 }
 
@@ -934,7 +1128,6 @@ const loadData = async () => {
   }
 }
 
-// Обновляем задачи при изменении колонок
 watch(columns, () => {
   if (columns.value.length > 0) {
     loadTasks()
@@ -974,7 +1167,6 @@ onMounted(() => {
   color: #666;
 }
 
-/* Kanban стили */
 .kanban-wrap {
   display: flex;
   gap: 20px;
@@ -1031,7 +1223,21 @@ onMounted(() => {
   line-height: 1.4;
 }
 
-/* Добавлено: стили для срока выполнения */
+.item-attachments {
+  margin-bottom: 8px;
+}
+
+.attachments-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
 .item-due-date {
   display: flex;
   align-items: center;
@@ -1124,7 +1330,6 @@ onMounted(() => {
   padding: 20px;
 }
 
-/* Кнопка создания */
 .boards-create-btn {
   position: fixed;
   bottom: 30px;
@@ -1151,7 +1356,6 @@ onMounted(() => {
   box-shadow: 0 6px 16px rgba(181, 75, 17, 0.4);
 }
 
-/* Модальные окна */
 .boards-modal-overlay {
   position: fixed;
   top: 0;
@@ -1291,7 +1495,110 @@ onMounted(() => {
   font-weight: 500;
 }
 
-/* Стили для участников */
+.file-upload-section {
+  margin-top: 10px;
+}
+
+.file-upload-area {
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  padding: 30px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 20px;
+}
+
+.file-upload-area:hover {
+  border-color: #B54B11;
+  background-color: #fef7f3;
+}
+
+.file-upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-upload-icon {
+  font-size: 32px;
+  color: #6b7280;
+}
+
+.file-upload-text {
+  font-weight: 500;
+  color: #374151;
+}
+
+.file-upload-hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.attachments-list {
+  margin-top: 15px;
+}
+
+.attachments-title {
+  font-weight: 500;
+  margin-bottom: 10px;
+  color: #374151;
+  font-size: 14px;
+}
+
+.attachment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background: #f9fafb;
+}
+
+.attachment-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attachment-name {
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+}
+
+.attachment-size {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.attachment-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.attachment-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: background 0.2s ease;
+}
+
+.attachment-download:hover {
+  background: #d1fae5;
+}
+
+.attachment-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 .boards-members-add {
   display: flex;
   gap: 10px;
@@ -1367,7 +1674,6 @@ onMounted(() => {
   color: #dc2626;
 }
 
-/* Действия модального окна */
 .boards-modal-actions {
   display: flex;
   gap: 12px;
@@ -1423,15 +1729,6 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* Стили для просмотра задачи */
-.task-description {
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 6px;
-  color: #374151;
-  line-height: 1.5;
-}
-
 .task-created-date {
   padding: 8px 12px;
   background: #f3f4f6;
@@ -1441,7 +1738,6 @@ onMounted(() => {
   font-weight: 500;
 }
 
-/* Toast уведомления */
 .toast {
   position: fixed;
   top: 20px;
@@ -1463,6 +1759,10 @@ onMounted(() => {
   background: #ef4444;
 }
 
+.toast-warning {
+  background: #f59e0b;
+}
+
 @keyframes slideIn {
   from {
     transform: translateX(100%);
@@ -1471,6 +1771,30 @@ onMounted(() => {
   to {
     transform: translateX(0);
     opacity: 1;
+  }
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .kanban-wrap {
+    flex-direction: column;
+  }
+  
+  .kanban-column {
+    min-width: auto;
+  }
+  
+  .boards-modal {
+    width: 95%;
+    margin: 20px;
+  }
+  
+  .boards-members-add {
+    flex-direction: column;
+  }
+  
+  .boards-modal-actions {
+    flex-direction: column;
   }
 }
 </style>

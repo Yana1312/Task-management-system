@@ -1,6 +1,5 @@
 import { ref } from 'vue'
 
-// Глобальный store для Pomodoro таймера
 class PomodoroStore {
   constructor() {
     this.timeLeft = ref(25 * 60)
@@ -9,6 +8,28 @@ class PomodoroStore {
     this.sessionTime = ref(25)
     this.breakTime = ref(5)
     this.timerInterval = null
+    this.alarmAudio = null
+  }
+
+  initAlarm() {
+    this.alarmAudio = new Audio('/sounds/digital-alarm-sound.mp3')
+  }
+
+  playAlarm() {
+    if (!this.alarmAudio) {
+      this.initAlarm()
+    }
+    if (this.alarmAudio) {
+      this.alarmAudio.currentTime = 0
+      this.alarmAudio.play().catch(() => {})
+    }
+  }
+
+  switchMode() {
+    this.playAlarm()
+    this.isBreak.value = !this.isBreak.value
+    this.timeLeft.value = (this.isBreak.value ? this.breakTime.value : this.sessionTime.value) * 60
+    this.startTimer()
   }
 
   startTimer() {
@@ -19,14 +40,7 @@ class PomodoroStore {
         this.timeLeft.value--
       } else {
         clearInterval(this.timerInterval)
-        this.isRunning.value = false
-        this.isBreak.value = !this.isBreak.value
-        this.timeLeft.value = (this.isBreak.value ? this.breakTime.value : this.sessionTime.value) * 60
-        
-        // Уведомление
-        if (Notification.permission === 'granted') {
-          new Notification(this.isBreak.value ? 'Время перерыва!' : 'Время работать!')
-        }
+        this.switchMode()
       }
     }, 1000)
   }

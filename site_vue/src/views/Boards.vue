@@ -476,7 +476,7 @@ async function loadBoards() {
     await loadBoardMembers()
 
   } catch (e) {
-    console.warn('[boards] loadBoards error:', e)
+    console.warn('Error loading boards:', e)
     showToast('Не удалось загрузить доски', 'error')
   } finally {
     loading.value = false
@@ -492,9 +492,9 @@ async function createDefaultColumns(boardId) {
   
   try {
     const { error } = await supabase.from('columns').insert(defaults)
-    if (error) console.warn('[boards] default columns insert error:', error)
+    if (error) console.warn('Error creating default columns:', error)
   } catch (e) {
-    console.warn('[boards] default columns exception:', e)
+    console.warn('Error creating default columns:', e)
   }
 }
 
@@ -579,7 +579,7 @@ async function createBoard() {
     showToast('Проект успешно создан!', 'success')
 
   } catch (error) {
-    console.warn('[boards] createBoard error:', error)
+    console.warn('Error creating board:', error)
     showToast('Ошибка при создании проекта: ' + error.message, 'error')
   } finally {
     creating.value = false
