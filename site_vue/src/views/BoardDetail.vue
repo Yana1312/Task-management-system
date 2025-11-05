@@ -1774,6 +1774,7 @@ onMounted(() => {
   }
 }
 
+/* Адаптивность */
 @media (max-width: 768px) {
   .kanban-wrap {
     flex-direction: column;
@@ -1794,10 +1795,6 @@ onMounted(() => {
   
   .boards-modal-actions {
     flex-direction: column;
-  }
-  
-  .file-upload-area {
-    padding: 20px;
   }
 }
 </style>
