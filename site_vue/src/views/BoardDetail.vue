@@ -570,7 +570,7 @@ const formatDate = (dateString) => {
 const getPriorityText = (priority) => {
   const priorities = {
     low: 'Низкий',
-    medium: 'Средний',
+    medium: 'Средний', 
     high: 'Высокий',
     critical: 'Критический'
   }

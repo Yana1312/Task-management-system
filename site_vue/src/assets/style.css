@@ -2472,7 +2472,6 @@ input[type="checkbox"]:checked + label {
     margin-top: 4px;
 }
 
-/* Members styles scoped */
 #board-page .boards-members-add {
     display: flex;
     gap: 10px;

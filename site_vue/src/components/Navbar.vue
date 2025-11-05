@@ -19,6 +19,10 @@
         <img class="nav-icon-img" src="/resources/folder_icon.svg" alt="Архив"/>
       </router-link>
 
+      <router-link to="/analitics" class="nav-item" :class="{ active: isActivePath('/analitics') }" aria-label="Аналитика">
+        <img class="nav-icon-img" src="/resources/analitics_icon.svg" alt="Аналитика"/>
+      </router-link>
+
       <div class="nav-item pomodoro-mini" :class="{ active: pomodoro.isRunning.value }" @click="togglePomodoroModal">
         <div class="pomodoro-mini-display">
           <div class="pomodoro-time">{{ formatTime(pomodoro.timeLeft.value) }}</div>

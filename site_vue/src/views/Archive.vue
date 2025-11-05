@@ -449,10 +449,6 @@ export default {
   margin-bottom: 20px;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 .no-tasks {
   text-align: center;
@@ -470,7 +466,6 @@ export default {
   font-size: 1em;
 }
 
-/* Новые стили для отображения информации о файлах */
 .task-info {
   display: flex;
   flex-direction: column;
@@ -484,12 +479,11 @@ export default {
   font-style: italic;
 }
 
-/* Уведомление о скачивании */
 .download-notification {
   position: fixed;
   top: 20px;
   right: 20px;
-  background: linear-gradient(135deg, #B54B11 0%, #CE7939 100%);
+  background: #CE7939;
   border-radius: 12px;
   padding: 16px;
   color: #E6D1A4;
@@ -534,18 +528,6 @@ export default {
   animation: spin 1s linear infinite;
 }
 
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* Обновленные стили для ссылки скачивания */
 .archive-card .file-link {
   color: #E6D1A4;
   text-decoration: none;
@@ -563,18 +545,10 @@ export default {
   min-width: fit-content;
 }
 
-.archive-card .file-link:hover {
-  background: rgba(72, 9, 2, 0.6);
-  transform: translateX(2px);
-  text-decoration: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
 .archive-card .file-link i {
   font-size: 0.9em;
 }
 
-/* Остальные существующие стили... */
 * {
     margin: 0;
     padding: 0;
@@ -583,7 +557,6 @@ export default {
 }
 
 body {
-    background: linear-gradient(135deg, #E6D1A4 0%, #CE7939 100%);
     color: #2c3e50;
     min-height: 100vh;
     display: flex;
@@ -616,7 +589,7 @@ body {
 }
 
 .title-bar {
-    background: linear-gradient(135deg, #B54B11 0%, #CE7939 100%);
+    background: #b54b11;
     padding: 18px 25px;
     border-radius: 12px;
     font-size: 1.6em;
@@ -625,8 +598,6 @@ body {
     margin: 0;
     font-weight: 700;
     letter-spacing: 1px;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    box-shadow: 0 4px 15px rgba(181, 75, 17, 0.3);
 }
 
 .archive-sections {
@@ -666,7 +637,7 @@ body {
 }
 
 .archive-card {
-    background: linear-gradient(135deg, #B54B11 0%, #CE7939 100%);
+    background: #CE7939;
     border-radius: 12px;
     padding: 18px;
     color: #E6D1A4;
@@ -675,10 +646,6 @@ body {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-.archive-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-}
 
 .archive-card h3 {
     font-size: 1.1em;
