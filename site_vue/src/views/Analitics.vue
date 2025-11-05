@@ -372,8 +372,13 @@ export default {
       })
     }
 
-    
-    
+    const exportAnalytics = () => {
+      console.log('Экспорт аналитики...')
+    }
+
+    const sendEmailReport = () => {
+      console.log('Отправка отчета...')
+    }
 
     onMounted(() => {
       loadAnalytics()
