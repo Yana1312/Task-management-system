@@ -33,8 +33,8 @@
                   <span v-if="t.priority" :class="['priority-badge', `priority-${t.priority}`]">
                     {{ getPriorityText(t.priority) }}
                   </span>
-                  <span v-if="getTaskMembers(t.id).length > 0" class="member-count">
-                    {{ getTaskMembers(t.id).length }} участников
+                  <span v-if="t.assignee_email" class="assignee-badge">
+                    👤 {{ t.assignee_email }}
                   </span>
                 </div>
               </div>
@@ -47,6 +47,7 @@
       <button class="boards-create-btn" @click="openModal" aria-label="Создать задачу">+</button>
     </div>
 
+    <!-- Модальное окно создания задачи -->
     <div v-if="showModal" class="boards-modal-overlay" @click="closeModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
@@ -84,6 +85,19 @@
             </div>
 
             <div class="boards-modal-field">
+              <label class="boards-modal-label">Исполнитель задачи</label>
+              <select v-model="newTask.assignee_email" class="boards-modal-input" required>
+                <option value="">Выберите исполнителя</option>
+                <option v-for="user in availableUsers" :key="user.id" :value="user.email">
+                  {{ user.email }}
+                </option>
+              </select>
+              <div class="boards-modal-hint">
+                Основной исполнитель задачи
+              </div>
+            </div>
+
+            <div class="boards-modal-field">
               <label class="boards-modal-label">Приоритет</label>
               <select v-model="newTask.priority" class="boards-modal-input">
                 <option value="low">Низкий</option>
@@ -106,43 +120,6 @@
               </div>
             </div>
           </div>
-
-          <div class="boards-modal-section">
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Добавить участников</label>
-              <div class="boards-members-add">
-                <input 
-                  v-model="newMemberEmail" 
-                  class="boards-modal-input" 
-                  placeholder="Email участника"
-                  @keyup.enter="addMember"
-                />
-                <button class="boards-add-member-btn" @click="addMember">Добавить</button>
-              </div>
-            </div>
-
-            <div v-if="currentTaskMembers.length > 0" class="boards-members-list">
-              <div class="boards-members-title">Участники задачи:</div>
-              <div 
-                v-for="(member, index) in currentTaskMembers" 
-                :key="index"
-                class="boards-member-item"
-              >
-                <div class="boards-member-info">
-                  <span class="boards-member-email">{{ member }}</span>
-                </div>
-                <div class="boards-member-actions">
-                  <button 
-                    class="boards-member-btn boards-member-btn-remove"
-                    @click="removeMember(index)"
-                    title="Удалить"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
         
         <div class="boards-modal-actions">
@@ -152,7 +129,7 @@
           <button 
             class="boards-modal-btn boards-modal-btn-create" 
             @click="createTask"
-            :disabled="!newTask.title.trim() || creating"
+            :disabled="!newTask.title.trim() || !newTask.assignee_email || creating"
           >
             {{ creating ? 'Создание...' : 'Создать задачу' }}
           </button>
@@ -160,6 +137,7 @@
       </div>
     </div>
 
+    <!-- Модальное окно редактирования задачи -->
     <div v-if="showTaskModal" class="boards-modal-overlay" @click="closeTaskModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
@@ -205,6 +183,23 @@
             </div>
 
             <div class="boards-modal-field">
+              <label class="boards-modal-label">Исполнитель задачи</label>
+              <select 
+                v-model="selectedTask.assignee_email" 
+                class="boards-modal-input"
+                @change="updateTaskAssignee"
+              >
+                <option value="">Выберите исполнителя</option>
+                <option v-for="user in availableUsers" :key="user.id" :value="user.email">
+                  {{ user.email }}
+                </option>
+              </select>
+              <div class="boards-modal-hint">
+                Текущий исполнитель: {{ selectedTask.assignee_email || 'Не назначен' }}
+              </div>
+            </div>
+
+            <div class="boards-modal-field">
               <label class="boards-modal-label">Приоритет</label>
               <select 
                 v-model="selectedTask.priority" 
@@ -240,6 +235,13 @@
                 {{ formatDate(selectedTask.created_at) }}
               </div>
             </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Создатель задачи</label>
+              <div class="task-creator-info">
+                {{ selectedTask.creator_email || 'Неизвестно' }}
+              </div>
+            </div>
           </div>
 
           <div class="boards-modal-section" v-if="isTaskCompleted">
@@ -264,7 +266,7 @@
                       Перетащите файлы сюда или нажмите для выбора
                     </div>
                     <div class="file-upload-hint">
-                      Максимальный размер: 10MB
+                      Максимальный размер: 50MB
                     </div>
                   </div>
                 </div>
@@ -302,23 +304,6 @@
             </div>
           </div>
 
-          <div class="boards-modal-section" v-if="selectedTaskMembers.length > 0">
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Участники задачи</label>
-              <div class="boards-members-list">
-                <div 
-                  v-for="member in selectedTaskMembers" 
-                  :key="member.id"
-                  class="boards-member-item"
-                >
-                  <div class="boards-member-info">
-                    <span class="boards-member-email">{{ member.user_email }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div class="boards-modal-section">
             <div class="boards-modal-actions">
               <button 
@@ -350,7 +335,7 @@ const boardId = ref(route.params.id)
 const board = ref(null)
 const columns = ref([])
 const tasks = ref([])
-const taskMembers = ref([])
+const availableUsers = ref([])
 const loading = ref(true)
 const currentUser = ref(null)
 
@@ -365,13 +350,11 @@ const newTask = ref({
   title: '',
   description: '',
   column_id: null,
+  assignee_email: '',
   priority: 'medium',
   due_date: null
 })
-const newMemberEmail = ref('')
-const currentTaskMembers = ref([])
 const selectedTask = ref(null)
-const selectedTaskMembers = ref([])
 
 const fileInput = ref(null)
 
@@ -425,32 +408,19 @@ const getCurrentUser = async () => {
   }
 }
 
-const addMember = () => {
-  const email = newMemberEmail.value.trim().toLowerCase()
-  
-  if (!email) {
-    showToast('Введите email участника', 'error')
-    return
+const loadAvailableUsers = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email')
+      .order('email', { ascending: true })
+    
+    if (error) throw error
+    availableUsers.value = data || []
+  } catch (error) {
+    console.error('Ошибка загрузки пользователей:', error)
+    availableUsers.value = []
   }
-  
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailRegex.test(email)) {
-    showToast('Введите корректный email', 'error')
-    return
-  }
-  
-  if (currentTaskMembers.value.includes(email)) {
-    showToast('Этот участник уже добавлен', 'error')
-    return
-  }
-  
-  currentTaskMembers.value.push(email)
-  newMemberEmail.value = ''
-  showToast('Участник добавлен', 'success')
-}
-
-const removeMember = (index) => {
-  currentTaskMembers.value.splice(index, 1)
 }
 
 const formatDueDate = (dateString) => {
@@ -531,16 +501,14 @@ const closeModal = () => {
     title: '',
     description: '',
     column_id: columns.value.length > 0 ? columns.value[0].id : null,
+    assignee_email: '',
     priority: 'medium',
     due_date: null
   }
-  currentTaskMembers.value = []
-  newMemberEmail.value = ''
 }
 
 const openTaskDetails = async (task) => {
   selectedTask.value = { ...task }
-  await loadTaskMembers(task.id)
   await loadTaskAttachments(task.id)
   showTaskModal.value = true
 }
@@ -548,18 +516,8 @@ const openTaskDetails = async (task) => {
 const closeTaskModal = () => {
   showTaskModal.value = false
   selectedTask.value = null
-  selectedTaskMembers.value = []
   clearTimeout(titleUpdateTimeout)
   clearTimeout(descriptionUpdateTimeout)
-}
-
-const getColumnTitle = (columnId) => {
-  const column = columns.value.find(col => col.id === columnId)
-  return column ? column.title : 'Неизвестно'
-}
-
-const getTaskMembers = (taskId) => {
-  return taskMembers.value.filter(member => member.task_id === taskId)
 }
 
 const formatDate = (dateString) => {
@@ -586,7 +544,7 @@ const formatFileSize = (bytes) => {
 }
 
 const createTask = async () => {
-  if (!newTask.value.title.trim()) return
+  if (!newTask.value.title.trim() || !newTask.value.assignee_email) return
   
   creating.value = true
   try {
@@ -598,13 +556,19 @@ const createTask = async () => {
       throw new Error('Пользователь не авторизован')
     }
 
+    // Находим ID исполнителя по email
+    const assigneeUser = availableUsers.value.find(user => user.email === newTask.value.assignee_email)
+    if (!assigneeUser) {
+      throw new Error('Выбранный исполнитель не найден')
+    }
+
     const taskData = {
       title: newTask.value.title,
       description: newTask.value.description || null,
       column_id: newTask.value.column_id,
       position: tasks.value.length,
       creator_id: currentUser.value.id,
-      assignee_id: currentUser.value.id,
+      assignee_id: assigneeUser.id,
       priority: newTask.value.priority || 'medium',
       due_date: newTask.value.due_date || null,
       created_at: new Date().toISOString()
@@ -613,41 +577,28 @@ const createTask = async () => {
     const { data: taskDataResult, error: taskError } = await supabase
       .from('tasks')
       .insert(taskData)
-      .select()
+      .select(`
+        *,
+        assignee:assignee_id (email),
+        creator:creator_id (email)
+      `)
       .single()
 
     if (taskError) {
       throw taskError
     }
 
-    if (currentTaskMembers.value.length > 0) {
-      const { data: users, error: usersError } = await supabase
-        .from('users')
-        .select('id, email')
-        .in('email', currentTaskMembers.value)
-
-      if (!usersError && users && users.length > 0) {
-        const membersToInsert = users.map(user => ({
-          task_id: taskDataResult.id,
-          user_id: user.id,
-          role: 'member',
-          added_at: new Date().toISOString()
-        }))
-
-        const { error: membersError } = await supabase
-          .from('task_members')
-          .insert(membersToInsert)
-
-        if (!membersError) {
-          taskMembers.value.push(...membersToInsert)
-        }
-      }
+    // Обновляем задачу с email исполнителя и создателя
+    const updatedTask = {
+      ...taskDataResult,
+      assignee_email: taskDataResult.assignee?.email,
+      creator_email: taskDataResult.creator?.email
     }
 
-    tasks.value.push(taskDataResult)
+    tasks.value.push(updatedTask)
     
     closeModal()
-    showToast('Задача успешно создана в колонке "' + getColumnTitle(newTask.value.column_id) + '"!', 'success')
+    showToast('Задача успешно создана для исполнителя "' + newTask.value.assignee_email + '"!', 'success')
     
   } catch (error) {
     let errorMessage = 'Ошибка при создании задачи'
@@ -657,6 +608,8 @@ const createTask = async () => {
       errorMessage = 'Выберите колонку для задачи'
     } else if (error.message.includes('Пользователь не авторизован')) {
       errorMessage = 'Вы не авторизованы'
+    } else if (error.message.includes('Выбранный исполнитель не найден')) {
+      errorMessage = 'Выбранный исполнитель не найден в системе'
     }
     
     showToast(errorMessage, 'error')
@@ -753,6 +706,41 @@ const updateTaskStatus = async () => {
   }
 }
 
+const updateTaskAssignee = async () => {
+  if (!selectedTask.value) return
+  
+  try {
+    // Находим ID нового исполнителя по email
+    const assigneeUser = availableUsers.value.find(user => user.email === selectedTask.value.assignee_email)
+    if (!assigneeUser) {
+      showToast('Выбранный исполнитель не найден', 'error')
+      return
+    }
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        assignee_id: assigneeUser.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedTask.value.id)
+
+    if (error) throw error
+
+    // Обновляем локальные данные задачи
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].assignee_id = assigneeUser.id
+      tasks.value[taskIndex].assignee_email = assigneeUser.email
+      tasks.value[taskIndex].updated_at = new Date().toISOString()
+    }
+
+    showToast('Исполнитель задачи обновлен!', 'success')
+  } catch (error) {
+    showToast('Ошибка при обновлении исполнителя', 'error')
+  }
+}
+
 const updateTaskPriority = async () => {
   if (!selectedTask.value) return
   
@@ -808,6 +796,13 @@ const deleteTask = async () => {
   
   deleting.value = true
   try {
+    // Сначала удаляем вложения
+    await supabase
+      .from('attachments')
+      .delete()
+      .eq('task_id', selectedTask.value.id)
+
+    // Затем удаляем саму задачу
     const { error } = await supabase
       .from('tasks')
       .delete()
@@ -872,12 +867,22 @@ const loadTasks = async () => {
       
       const { data, error } = await supabase
         .from('tasks')
-        .select('*')
+        .select(`
+          *,
+          assignee:assignee_id (email),
+          creator:creator_id (email)
+        `)
         .in('column_id', columnIds)
         .order('position', { ascending: true })
       
       if (error) throw error
-      tasks.value = data || []
+      
+      // Преобразуем данные для удобства использования
+      tasks.value = (data || []).map(task => ({
+        ...task,
+        assignee_email: task.assignee?.email,
+        creator_email: task.creator?.email
+      }))
       
       await loadTaskAttachmentsForAllTasks()
     } else {
@@ -885,32 +890,6 @@ const loadTasks = async () => {
     }
   } catch (error) {
     tasks.value = []
-  }
-}
-
-const loadTaskMembers = async (taskId = null) => {
-  try {
-    let query = supabase.from('task_members').select('*')
-    
-    if (taskId) {
-      query = query.eq('task_id', taskId)
-      const { data, error } = await query
-      if (error) throw error
-      selectedTaskMembers.value = data || []
-    } else {
-      if (tasks.value.length > 0) {
-        query = query.in('task_id', tasks.value.map(t => t.id))
-        const { data, error } = await query
-        if (error) throw error
-        taskMembers.value = data || []
-      }
-    }
-  } catch (error) {
-    if (taskId) {
-      selectedTaskMembers.value = []
-    } else {
-      taskMembers.value = []
-    }
   }
 }
 
@@ -1116,10 +1095,10 @@ const loadData = async () => {
   loading.value = true
   try {
     await getCurrentUser()
+    await loadAvailableUsers()
     await loadBoard()
     await loadColumns()
     await loadTasks()
-    await loadTaskMembers()
   } catch (error) {
     console.error('Error loading data:', error)
     showToast('Ошибка загрузки данных', 'error')
@@ -1140,6 +1119,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Стили остаются без изменений */
 .container {
   min-height: 100vh;
 }
@@ -1315,12 +1295,15 @@ onMounted(() => {
   font-weight: bold;
 }
 
-.member-count {
+.assignee-badge {
   font-size: 12px;
   color: #B54B11;
   background: #fef3c7;
   padding: 2px 6px;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .kanban-empty {
@@ -1599,81 +1582,6 @@ onMounted(() => {
   color: #dc2626;
 }
 
-.boards-members-add {
-  display: flex;
-  gap: 10px;
-}
-
-.boards-add-member-btn {
-  padding: 10px 15px;
-  background: #B54B11;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-  font-size: 14px;
-  transition: background 0.2s ease;
-}
-
-.boards-add-member-btn:hover {
-  background: #9a3f0e;
-}
-
-.boards-members-list {
-  margin-top: 15px;
-}
-
-.boards-members-title {
-  font-weight: 500;
-  margin-bottom: 10px;
-  color: #374151;
-  font-size: 14px;
-}
-
-.boards-member-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.boards-member-item:last-child {
-  border-bottom: none;
-}
-
-.boards-member-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.boards-member-email {
-  color: #374151;
-  font-size: 14px;
-}
-
-.boards-member-actions {
-  display: flex;
-  gap: 5px;
-}
-
-.boards-member-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: background 0.2s ease;
-}
-
-.boards-member-btn-remove:hover {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
 .boards-modal-actions {
   display: flex;
   gap: 12px;
@@ -1738,6 +1646,15 @@ onMounted(() => {
   font-weight: 500;
 }
 
+.task-creator-info {
+  padding: 8px 12px;
+  background: #f3f4f6;
+  color: #374151;
+  border-radius: 6px;
+  display: inline-block;
+  font-weight: 500;
+}
+
 .toast {
   position: fixed;
   top: 20px;
@@ -1787,10 +1704,6 @@ onMounted(() => {
   .boards-modal {
     width: 95%;
     margin: 20px;
-  }
-  
-  .boards-members-add {
-    flex-direction: column;
   }
   
   .boards-modal-actions {
