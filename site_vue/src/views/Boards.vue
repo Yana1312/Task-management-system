@@ -167,14 +167,7 @@
                       <span v-else class="boards-member-badge member">Участник</span>
                     </div>
                     <div class="boards-member-actions">
-                      <button 
-                        v-if="member.role !== 'admin'"
-                        class="boards-member-btn boards-member-btn-promote"
-                        @click="promoteToAdmin(index)"
-                        title="Сделать администратором"
-                      >
-                        ⭐
-                      </button>
+                     
                       <button 
                         class="boards-member-btn boards-member-btn-remove"
                         @click="removeMember(index)"

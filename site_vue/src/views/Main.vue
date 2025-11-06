@@ -123,16 +123,23 @@
           </div>
           <div v-else class="tasks-scrollable">
             <div 
-              v-for="task in sortedTasks" 
+              v-for="task in tasks" 
               :key="task.id" 
               class="task-item"
               :class="{ 
-                urgent: isTaskUrgent(task.due_date),
-                'high-priority': task.priority === 'high'
+                completed: task.is_completed && task.approval_status === 'approved',
+                pending: task.approval_status === 'pending',
+                rejected: task.approval_status === 'rejected'
               }"
             >
-              <div class="task-content">
-
+              <input 
+                type="checkbox" 
+                :id="'task' + task.id"
+                :checked="task.is_completed && task.approval_status === 'approved'"
+                @change="toggleTask(task)"
+                :disabled="task.approval_status === 'pending'"
+              >
+              <label :for="'task' + task.id">
                 <span class="task-title">{{ task.title }}</span>
                 <div class="task-meta">
                   <span v-if="task.due_date" class="task-due-date" :class="getDueDateClass(task.due_date)">
@@ -142,10 +149,10 @@
                     {{ getPriorityLabel(task.priority) }}
                   </span>
                   <span v-if="task.approval_status === 'pending'" class="approval-badge pending">
-                    На проверке
+                    ⏳ На проверке
                   </span>
                   <span v-if="task.approval_status === 'rejected'" class="approval-badge rejected">
-                    Требует доработки
+                    ❌ Требует доработки
                   </span>
                 </div>
                 <div class="task-project" v-if="getProjectInfo(task)">
@@ -153,7 +160,7 @@
                     {{ getProjectInfo(task) }}
                   </span>
                 </div>
-              </div>
+              </label>
             </div>
           </div>
         </div>
@@ -180,6 +187,7 @@ const tasks = ref([])
 const projects = ref([])
 const loading = ref(true)
 const projectsLoading = ref(true)
+const cardBg = ref('#B54B11')
 
 const personalProjects = computed(() => {
   return projects.value.filter(project => project.isPersonal)
@@ -313,6 +321,7 @@ const loadProjectsWithProgress = async () => {
           console.error('Ошибка загрузки задач:', tasksError)
         } else {
           totalTasks = tasksData?.length || 0
+          // Считаем задачу завершенной только если она выполнена И подтверждена
           completedTasks = tasksData?.filter(task => 
             task.is_completed && task.approval_status === 'approved'
           ).length || 0
@@ -320,6 +329,7 @@ const loadProjectsWithProgress = async () => {
         }
       }
 
+      // Правильный расчет процента завершенности
       const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
 
       // Получаем информацию об участниках
@@ -525,16 +535,54 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main {
+  flex: 1;
+  background: #480902;
+  color: #E6D1A4;
+}
+
+.right-sidebar {
+  width: 350px;
+  background: #E6D1A4;
+  color: #480902;
+  padding: 20px;
+  border-left: 2px solid #B54B11;
+}
+
+.page-content {
+  padding: 20px;
+}
+
+.projects-header {
+  font-size: 24px;
+  font-weight: bold;
+  color: #E6D1A4;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
 .boards-sections {
   display: flex;
   flex-direction: column;
   gap: 30px;
-  padding: 20px;
 }
 
 .boards-section {
   display: flex;
   flex-direction: column;
+}
+
+.section-title {
+  color: #E6D1A4;
+  font-size: 18px;
+  margin-bottom: 15px;
+  border-bottom: 2px solid #B54B11;
+  padding-bottom: 5px;
 }
 
 .boards-row {
@@ -692,184 +740,4 @@ onMounted(() => {
   text-align: center;
 }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.tasks-count {
-  background: #B54B11;
-  color: white;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.5em;
-  font-weight: bold;
-}
-
-.tasks-container {
-  display: flex;
-  flex-direction: column;
-  height: 300px; 
-  background:transparent;
-}
-
-.tasks-scrollable {
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 5px;
-}
-
-.tasks-scrollable::-webkit-scrollbar {
-  width: 6px;
-}
-
-.tasks-scrollable::-webkit-scrollbar-track {
-  background: rgba(181, 75, 17, 0.1);
-  border-radius: 3px;
-}
-
-.tasks-scrollable::-webkit-scrollbar-thumb {
-  background: #CE7939;
-  border-radius: 3px;
-}
-
-.tasks-scrollable::-webkit-scrollbar-thumb:hover {
-  background: #B54B11;
-}
-
-.task-item {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 8px;
-  padding: 8px;
-  border-radius: 16px;
-  color: #e6d1a4;
-  background: #b54b11;
-  border-left: 3px solid #B54B11;
-  transition: all 0.2s ease;
-}
-
-.task-content {
-  flex: 1;
-}
-
-.task-title {
-  display: flex;
-  font-weight: 500;
-  margin-bottom: 4px;
-  word-break: break-word;
-}
-
-.task-meta {
-  display: flex;
-  gap: 8px;
-  font-size: 0.75em;
-  margin-bottom: 4px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.task-due-date {
-  font-size: 0.75em;
-  padding: 1px 4px;
-  border-radius: 2px;
-}
-
-.task-due-date.overdue {
-  background: #ff4444;
-  color: white;
-  font-weight: bold;
-}
-
-.task-due-date.today {
-  background: #ff6b35;
-  color: white;
-  font-weight: bold;
-}
-
-.task-due-date.urgent {
-  background: #ffaa00;
-  color: black;
-  font-weight: bold;
-}
-
-.priority-badge {
-  padding: 1px 4px;
-  border-radius: 2px;
-  font-size: 0.7em;
-  font-weight: bold;
-}
-
-.priority-badge.high {
-  background: #ff4444;
-  color: white;
-}
-
-.priority-badge.medium {
-  background: #ffaa00;
-  color: black;
-}
-
-.priority-badge.low {
-  background: #44ff44;
-  color: black;
-}
-
-.priority-badge.critical {
-  background: #ff00ff;
-  color: white;
-}
-
-.approval-badge {
-  font-size: 0.7em;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-weight: 500;
-}
-
-.approval-badge.pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.approval-badge.rejected {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.task-project {
-  margin-top: 2px;
-  display:flex;
-}
-
-.project-badge {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 0.7em;
-  color: white;
-  font-weight: 500;
-  background: #B54B11;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.loading-tasks, .no-tasks, .loading {
-  text-align: center;
-  color: #E6D1A4;
-  font-style: italic;
-  padding: 20px;
-  font-size: 0.9em;
-}
-
-.task-item label {
-  word-break: break-word;
-}
 </style>
