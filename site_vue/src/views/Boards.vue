@@ -288,7 +288,6 @@
                         ×
                       </button>
                       <span v-if="!canEditAdmin && member.role !== 'admin'" class="boards-member-hint">
-                        <!-- Только админ может управлять -->
                       </span>
                       <span v-if="member.user_id === currentUserId" class="boards-member-hint">
                         Это вы
@@ -393,7 +392,6 @@ const canEditAdmin = computed(() => {
   return !!adminMember
 })
 
-// Methods
 const openBoard = (b) => { 
   router.push({ name: 'board', params: { id: b.id } }) 
 }
@@ -578,7 +576,6 @@ const addEditMember = async () => {
       return
     }
 
-    // Добавляем участника в базу данных
     const { error: addError } = await supabase
       .from('user_roles')
       .insert({
@@ -786,36 +783,20 @@ async function loadBoards() {
 
     const assignedIds = (userRoles || []).map(r => r.board_id).filter(Boolean)
 
-    const { data: ownBoards, error: ownError } = await supabase
-      .from('boards')
-      .select('*')
-      .eq('creator_id', uid)
-
-    if (ownError) throw ownError
-
-    let assignedBoards = []
-    if (assignedIds.length > 0) {
-      const { data: assignedData, error: assignedError } = await supabase
-        .from('boards')
-        .select('*')
-        .in('id', assignedIds)
-      
-      if (assignedError) throw assignedError
-      assignedBoards = assignedData || []
+    if (assignedIds.length === 0) {
+      boards.value = []
+      loading.value = false
+      return
     }
 
-    const { data: publicBoards, error: publicError } = await supabase
+    const { data: assignedBoards, error: assignedError } = await supabase
       .from('boards')
       .select('*')
-      .eq('is_public', true)
-
-    if (publicError) throw publicError
-
-    const merged = [...(ownBoards || []), ...assignedBoards, ...(publicBoards || [])]
-    const uniqMap = new Map()
-    merged.forEach(b => { if (b && b.id) uniqMap.set(b.id, b) })
+      .in('id', assignedIds)
     
-    boards.value = Array.from(uniqMap.values()).sort((a, b) => 
+    if (assignedError) throw assignedError
+
+    boards.value = (assignedBoards || []).sort((a, b) => 
       String(b.created_at || '').localeCompare(String(a.created_at || ''))
     )
 
