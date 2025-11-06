@@ -1145,14 +1145,14 @@ onMounted(() => {
   font-size: 24px;
   font-weight: 600;
   margin-bottom: 20px;
-  color: #333;
+  color: #E6D1A4;
 }
 
 .board-loading {
   text-align: center;
   padding: 40px;
-  font-size: 18px;     
-  color: #666;
+  font-size: 18px;
+  color: #E6D1A4;
 }
 
 .kanban-wrap {

@@ -123,23 +123,16 @@
           </div>
           <div v-else class="tasks-scrollable">
             <div 
-              v-for="task in tasks" 
+              v-for="task in sortedTasks" 
               :key="task.id" 
               class="task-item"
               :class="{ 
-                completed: task.is_completed && task.approval_status === 'approved',
-                pending: task.approval_status === 'pending',
-                rejected: task.approval_status === 'rejected'
+                urgent: isTaskUrgent(task.due_date),
+                'high-priority': task.priority === 'high'
               }"
             >
-              <input 
-                type="checkbox" 
-                :id="'task' + task.id"
-                :checked="task.is_completed && task.approval_status === 'approved'"
-                @change="toggleTask(task)"
-                :disabled="task.approval_status === 'pending'"
-              >
-              <label :for="'task' + task.id">
+              <div class="task-content">
+
                 <span class="task-title">{{ task.title }}</span>
                 <div class="task-meta">
                   <span v-if="task.due_date" class="task-due-date" :class="getDueDateClass(task.due_date)">
@@ -149,10 +142,10 @@
                     {{ getPriorityLabel(task.priority) }}
                   </span>
                   <span v-if="task.approval_status === 'pending'" class="approval-badge pending">
-                    ⏳ На проверке
+                    На проверке
                   </span>
                   <span v-if="task.approval_status === 'rejected'" class="approval-badge rejected">
-                    ❌ Требует доработки
+                    Требует доработки
                   </span>
                 </div>
                 <div class="task-project" v-if="getProjectInfo(task)">
@@ -160,7 +153,7 @@
                     {{ getProjectInfo(task) }}
                   </span>
                 </div>
-              </label>
+              </div>
             </div>
           </div>
         </div>
@@ -400,6 +393,24 @@ const openProject = (project) => {
   router.push({ name: 'board', params: { id: project.id } })
 }
 
+<<<<<<< HEAD
+=======
+const loadMoreProjects = () => {
+  // В реальном приложении здесь будет пагинация
+  console.log('Загрузка дополнительных проектов...')
+}
+
+const sortedTasks = computed(() => {
+  return [...tasks.value].sort((a, b) => {
+    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 }
+    const priorityA = priorityOrder[a.priority] || 4
+    const priorityB = priorityOrder[b.priority] || 4
+    
+    return priorityA - priorityB
+  })
+})
+
+>>>>>>> 26405cd2bd59f2cc0c19e68d8258faae8379cf85
 const loadTasks = async () => {
   loading.value = true
   try {
@@ -446,6 +457,7 @@ const loadTasks = async () => {
   }
 }
 
+<<<<<<< HEAD
 const toggleTask = async (task) => {
   try {
     const { error } = await supabase
@@ -468,6 +480,26 @@ const toggleTask = async (task) => {
   } catch (error) {
     console.error('Ошибка обновления задачи:', error)
   }
+=======
+const getCurrentUserId = async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.user?.id || null
+  } catch (error) {
+    console.error('Ошибка получения пользователя:', error)
+    return null
+  }
+}
+
+const isTaskUrgent = (dueDate) => {
+  if (!dueDate) return false
+  const now = new Date()
+  const due = new Date(dueDate)
+  const diffTime = due.getTime() - now.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays <= 3
+
+>>>>>>> 26405cd2bd59f2cc0c19e68d8258faae8379cf85
 }
 
 const getDueDateClass = (dueDate) => {
@@ -721,7 +753,8 @@ onMounted(() => {
 .tasks-container {
   display: flex;
   flex-direction: column;
-  height: 300px;
+  height: 300px; 
+  background:transparent;
 }
 
 .tasks-scrollable {
@@ -753,26 +786,19 @@ onMounted(() => {
   align-items: flex-start;
   margin-bottom: 8px;
   padding: 8px;
-  border-radius: 4px;
-  color: #480902;
-  background: #E6D1A4;
+  border-radius: 16px;
+  color: #e6d1a4;
+  background: #b54b11;
   border-left: 3px solid #B54B11;
   transition: all 0.2s ease;
 }
 
-.task-item input[type="checkbox"] {
-  margin-right: 8px;
-  margin-top: 2px;
-}
-
-.task-item label {
-  margin: 0;
-  font-size: 0.9em;
+.task-content {
   flex: 1;
 }
 
 .task-title {
-  display: block;
+  display: flex;
   font-weight: 500;
   margin-bottom: 4px;
   word-break: break-word;
@@ -857,6 +883,7 @@ onMounted(() => {
 
 .task-project {
   margin-top: 2px;
+  display:flex;
 }
 
 .project-badge {

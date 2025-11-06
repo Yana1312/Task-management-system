@@ -2,7 +2,7 @@
   <div class="analytics-page">
     <div class="analytics-container">
       <div class="analytics-header">
-        <h1>📊 Аналитика продуктивности</h1>
+        <h1>Аналитика продуктивности</h1>
         <p>Мониторинг загруженности и эффективности команды</p>
       </div>
 
@@ -17,17 +17,23 @@
           </select>
         </div>
         <div class="control-group">
-          <label>Команда:</label>
-          <select v-model="selectedTeam" @change="loadAnalytics">
-            <option value="all">Все участники</option>
-            <option v-for="user in users" :key="user.id" :value="user.id">
-              {{ user.username }}
+          <label>Проект:</label>
+          <select v-model="selectedProject" @change="onProjectChange">
+            <option value="all">Все проекты</option>
+            <option v-for="project in availableProjects" :key="project.id" :value="project.id">
+              {{ project.title }}
             </option>
           </select>
         </div>
-        <button class="refresh-btn" @click="loadAnalytics">
-          <i class="fas fa-sync-alt"></i> Обновить
-        </button>
+        <div class="control-group">
+          <label>Участник:</label>
+          <select v-model="selectedTeam" @change="loadAnalytics">
+            <option value="all">Все участники</option>
+            <option v-for="user in availableUsers" :key="user.id" :value="user.id">
+              {{ user.email }}
+            </option>
+          </select>
+        </div>
       </div>
 
       <div class="metrics-grid">
@@ -72,21 +78,11 @@
             {{ analytics.overdueRate }}%
           </div>
         </div>
-
-        <div class="metric-card">
-          <div class="metric-icon productivity">
-            <i class="fas fa-chart-line"></i>
-          </div>
-          <div class="metric-info">
-            <h3>{{ analytics.avgCompletionDays }}д</h3>
-            <p>Среднее время выполнения</p>
-          </div>
-        </div>
       </div>
 
       <div class="analytics-sections">
         <div class="analytics-section">
-          <h3>📈 Загруженность команды</h3>
+          <h3>Загруженность команды</h3>
           <div class="section-content">
             <div class="workload-chart">
               <div v-for="user in userWorkload" :key="user.id" class="workload-item">
@@ -133,7 +129,7 @@
         </div>
 
         <div class="analytics-section">
-          <h3>🚨 Задачи по приоритетам</h3>
+          <h3>Задачи по приоритетам</h3>
           <div class="section-content">
             <div class="priority-grid">
               <div v-for="priority in priorityDistribution" :key="priority.name" 
@@ -152,7 +148,7 @@
         </div>
 
         <div class="analytics-section">
-          <h3>🏢 Активность по проектам</h3>
+          <h3>Активность по проектам</h3>
           <div class="section-content">
             <div class="projects-activity">
               <div v-for="project in projectsActivity" :key="project.id" class="project-item">
@@ -178,36 +174,7 @@
             </div>
           </div>
         </div>
-
-        <div class="analytics-section full-width">
-          <h3>⏰ Активность по времени</h3>
-          <div class="section-content">
-            <div class="timeline-chart">
-              <div v-for="week in weeklyActivity" :key="week.week" class="timeline-item">
-                <div class="timeline-label">{{ formatWeek(week.week) }}</div>
-                <div class="timeline-bars">
-                  <div class="timeline-bar">
-                    <div class="bar-label">Создано</div>
-                    <div class="bar-container">
-                      <div class="bar created" :style="{ height: week.created_percentage + '%' }"></div>
-                    </div>
-                    <div class="bar-value">{{ week.tasks_created }}</div>
-                  </div>
-                  <div class="timeline-bar">
-                    <div class="bar-label">Выполнено</div>
-                    <div class="bar-container">
-                      <div class="bar completed" :style="{ height: week.completed_percentage + '%' }"></div>
-                    </div>
-                    <div class="bar-value">{{ week.tasks_completed }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
-
-      
     </div>
   </div>
 </template>
@@ -221,130 +188,339 @@ export default {
   setup() {
     const selectedPeriod = ref('30')
     const selectedTeam = ref('all')
+    const selectedProject = ref('all')
     const analytics = ref({
       totalTasks: 0,
       completedTasks: 0,
       overdueTasks: 0,
       completionRate: 0,
       overdueRate: 0,
-      avgCompletionDays: 0,
       tasksTrend: 0,
       completionTrend: 0
     })
     const userWorkload = ref([])
     const priorityDistribution = ref([])
     const projectsActivity = ref([])
-    const weeklyActivity = ref([])
-    const users = ref([])
+    const availableUsers = ref([])
+    const availableProjects = ref([])
     const loading = ref(false)
 
     const loadAnalytics = async () => {
       try {
         loading.value = true
         
-        await loadGeneralMetrics()
-        
-        await loadUserWorkload()
-        
-        await loadPriorityDistribution()
-        
-        await loadProjectsActivity()
-        
-        await loadWeeklyActivity()
+        await Promise.all([
+          loadGeneralMetrics(),
+          loadUserWorkload(),
+          loadPriorityDistribution(),
+          loadProjectsActivity()
+        ])
         
       } catch (error) {
+        console.error('Ошибка загрузки аналитики:', error)
       } finally {
         loading.value = false
       }
     }
 
+    const loadUserProjects = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user) return
+
+        const { data: userRoles, error } = await supabase
+          .from('user_roles')
+          .select(`
+            board_id,
+            boards!inner (
+              id,
+              title,
+              description
+            )
+          `)
+          .eq('user_id', session.user.id)
+
+        if (error) throw error
+
+        availableProjects.value = userRoles?.map(role => role.boards) || []
+      } catch (error) {
+        console.error('Ошибка загрузки проектов:', error)
+      }
+    }
+
+    const loadProjectUsers = async (projectId) => {
+      try {
+        let query = supabase
+          .from('user_roles')
+          .select(`
+            user_id,
+            users!inner (
+              id,
+              email,
+              username
+            )
+          `)
+
+        if (projectId !== 'all') {
+          query = query.eq('board_id', projectId)
+        }
+
+        const { data: projectUsers, error } = await query
+
+        if (error) throw error
+
+        const uniqueUsersMap = new Map()
+        projectUsers?.forEach(pu => {
+          if (pu.users && !uniqueUsersMap.has(pu.users.id)) {
+            uniqueUsersMap.set(pu.users.id, pu.users)
+          }
+        })
+
+        availableUsers.value = Array.from(uniqueUsersMap.values())
+      } catch (error) {
+        console.error('Ошибка загрузки пользователей проекта:', error)
+      }
+    }
+
+    const onProjectChange = async () => {
+      await loadProjectUsers(selectedProject.value)
+      await loadAnalytics()
+    }
+
     const loadGeneralMetrics = async () => {
       const days = parseInt(selectedPeriod.value)
-      
-      analytics.value = {
-        totalTasks: 147,
-        completedTasks: 89,
-        overdueTasks: 12,
-        completionRate: 61,
-        overdueRate: 8,
-        avgCompletionDays: 3.2,
-        tasksTrend: 12,
-        completionTrend: 5
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
+
+      try {
+        let tasksQuery = supabase
+          .from('tasks')
+          .select(`
+            *,
+            columns!inner (
+              board_id
+            )
+          `)
+          .gte('created_at', startDate.toISOString())
+
+        if (selectedProject.value !== 'all') {
+          tasksQuery = tasksQuery.eq('columns.board_id', selectedProject.value)
+        }
+
+        if (selectedTeam.value !== 'all') {
+          tasksQuery = tasksQuery.eq('assignee_id', selectedTeam.value)
+        }
+
+        const { data: tasks, error: tasksError } = await tasksQuery
+
+        if (tasksError) throw tasksError
+
+        const totalTasks = tasks?.length || 0
+        const completedTasks = tasks?.filter(task => task.is_completed)?.length || 0
+        const overdueTasks = tasks?.filter(task => 
+          !task.is_completed && 
+          task.due_date && 
+          new Date(task.due_date) < new Date()
+        )?.length || 0
+
+        const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+        const overdueRate = totalTasks > 0 ? Math.round((overdueTasks / totalTasks) * 100) : 0
+
+        analytics.value = {
+          totalTasks,
+          completedTasks,
+          overdueTasks,
+          completionRate,
+          overdueRate,
+          tasksTrend: 0,
+          completionTrend: 0
+        }
+
+      } catch (error) {
+        console.error('Ошибка в loadGeneralMetrics:', error)
+        throw error
       }
     }
 
     const loadUserWorkload = async () => {
-      userWorkload.value = [
-        {
-          id: 1,
-          username: 'ivanov',
-          email: 'ivanov@company.com',
-          active_tasks: 8,
-          completed_tasks: 23,
-          overdue_tasks: 2,
-          completion_rate: 65,
-          overdue_rate: 6
-        },
-        {
-          id: 2,
-          username: 'petrov',
-          email: 'petrov@company.com',
-          active_tasks: 12,
-          completed_tasks: 18,
-          overdue_tasks: 4,
-          completion_rate: 53,
-          overdue_rate: 12
-        },
-        {
-          id: 3,
-          username: 'sidorova',
-          email: 'sidorova@company.com',
-          active_tasks: 5,
-          completed_tasks: 32,
-          overdue_tasks: 1,
-          completion_rate: 84,
-          overdue_rate: 3
-        }
-      ]
+      const days = parseInt(selectedPeriod.value)
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
+
+      try {
+        const userWorkloadMap = new Map()
+
+        const workloadPromises = availableUsers.value.map(async (user) => {
+          if (selectedTeam.value !== 'all' && user.id !== selectedTeam.value) {
+            return null
+          }
+
+          let tasksQuery = supabase
+            .from('tasks')
+            .select(`
+              *,
+              columns!inner (
+                board_id
+              )
+            `)
+            .eq('assignee_id', user.id)
+            .gte('created_at', startDate.toISOString())
+
+          if (selectedProject.value !== 'all') {
+            tasksQuery = tasksQuery.eq('columns.board_id', selectedProject.value)
+          }
+
+          const { data: userTasks, error: tasksError } = await tasksQuery
+
+          if (tasksError) throw tasksError
+
+          const activeTasks = userTasks?.filter(task => !task.is_completed)?.length || 0
+          const completedTasks = userTasks?.filter(task => task.is_completed)?.length || 0
+          const overdueTasks = userTasks?.filter(task => 
+            !task.is_completed && 
+            task.due_date && 
+            new Date(task.due_date) < new Date()
+          )?.length || 0
+
+          const totalTasks = activeTasks + completedTasks + overdueTasks
+          const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+          const overdueRate = totalTasks > 0 ? Math.round((overdueTasks / totalTasks) * 100) : 0
+
+          return {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            active_tasks: activeTasks,
+            completed_tasks: completedTasks,
+            overdue_tasks: overdueTasks,
+            completion_rate: completionRate,
+            overdue_rate: overdueRate
+          }
+        })
+
+        const results = await Promise.all(workloadPromises)
+        
+        const validResults = results.filter(user => user !== null)
+        
+        validResults.forEach(user => {
+          userWorkloadMap.set(user.id, user)
+        })
+
+        userWorkload.value = Array.from(userWorkloadMap.values())
+
+      } catch (error) {
+        console.error('Ошибка в loadUserWorkload:', error)
+        throw error
+      }
     }
 
     const loadPriorityDistribution = async () => {
-      priorityDistribution.value = [
-        { name: 'low', count: 45, percentage: 31 },
-        { name: 'medium', count: 67, percentage: 46 },
-        { name: 'high', count: 25, percentage: 17 },
-        { name: 'critical', count: 10, percentage: 6 }
-      ]
+      const days = parseInt(selectedPeriod.value)
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
+
+      try {
+        let tasksQuery = supabase
+          .from('tasks')
+          .select(`
+            priority,
+            columns!inner (
+              board_id
+            )
+          `)
+          .gte('created_at', startDate.toISOString())
+
+        if (selectedProject.value !== 'all') {
+          tasksQuery = tasksQuery.eq('columns.board_id', selectedProject.value)
+        }
+
+        if (selectedTeam.value !== 'all') {
+          tasksQuery = tasksQuery.eq('assignee_id', selectedTeam.value)
+        }
+
+        const { data: tasks, error: tasksError } = await tasksQuery
+
+        if (tasksError) throw tasksError
+
+        const priorityCounts = (tasks || []).reduce((acc, task) => {
+          acc[task.priority] = (acc[task.priority] || 0) + 1
+          return acc
+        }, {})
+
+        const totalTasks = tasks ? tasks.length : 0
+        const priorities = ['low', 'medium', 'high', 'critical']
+        
+        priorityDistribution.value = priorities.map(priority => ({
+          name: priority,
+          count: priorityCounts[priority] || 0,
+          percentage: totalTasks > 0 ? Math.round(((priorityCounts[priority] || 0) / totalTasks) * 100) : 0
+        })).filter(p => p.count > 0)
+
+      } catch (error) {
+        console.error('Ошибка в loadPriorityDistribution:', error)
+        throw error
+      }
     }
 
     const loadProjectsActivity = async () => {
-      projectsActivity.value = [
-        {
-          id: 1,
-          title: 'Разработка нового функционала',
-          description: 'Основной проект разработки',
-          member_count: 8,
-          task_count: 45,
-          completion_rate: 68
-        },
-        {
-          id: 2,
-          title: 'Техническое обслуживание',
-          description: 'Поддержка существующих систем',
-          member_count: 4,
-          task_count: 23,
-          completion_rate: 82
-        }
-      ]
-    }
+      const days = parseInt(selectedPeriod.value)
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
 
-    const loadWeeklyActivity = async () => {
-      weeklyActivity.value = [
-        { week: '2024-01-01', tasks_created: 12, tasks_completed: 8, created_percentage: 60, completed_percentage: 40 },
-        { week: '2024-01-08', tasks_created: 18, tasks_completed: 15, created_percentage: 75, completed_percentage: 62 },
-        { week: '2024-01-15', tasks_created: 15, tasks_completed: 12, created_percentage: 63, completed_percentage: 50 },
-        { week: '2024-01-22', tasks_created: 22, tasks_completed: 18, created_percentage: 85, completed_percentage: 69 }
-      ]
+      try {
+        let projectsQuery = availableProjects.value
+
+        if (selectedProject.value !== 'all') {
+          projectsQuery = availableProjects.value.filter(p => p.id === selectedProject.value)
+        }
+
+        const projectsPromises = projectsQuery.map(async (project) => {
+          const { count: memberCount, error: memberError } = await supabase
+            .from('user_roles')
+            .select('*', { count: 'exact', head: true })
+            .eq('board_id', project.id)
+
+          if (memberError) throw memberError
+
+          let tasksQuery = supabase
+            .from('tasks')
+            .select(`
+              *,
+              columns!inner (
+                board_id
+              )
+            `)
+            .eq('columns.board_id', project.id)
+            .gte('created_at', startDate.toISOString())
+
+          if (selectedTeam.value !== 'all') {
+            tasksQuery = tasksQuery.eq('assignee_id', selectedTeam.value)
+          }
+
+          const { data: projectTasks, error: tasksError } = await tasksQuery
+
+          if (tasksError) throw tasksError
+
+          const totalTasks = projectTasks?.length || 0
+          const completedTasks = projectTasks?.filter(task => task.is_completed)?.length || 0
+          const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+          return {
+            id: project.id,
+            title: project.title,
+            description: project.description,
+            member_count: memberCount || 0,
+            task_count: totalTasks,
+            completion_rate: completionRate
+          }
+        })
+
+        projectsActivity.value = await Promise.all(projectsPromises)
+
+      } catch (error) {
+        console.error('Ошибка в loadProjectsActivity:', error)
+        throw error
+      }
     }
 
     const getTrendClass = (trend) => {
@@ -365,47 +541,28 @@ export default {
       return labels[priority] || priority
     }
 
-    const formatWeek = (weekDate) => {
-      return new Date(weekDate).toLocaleDateString('ru-RU', {
-        month: 'short',
-        day: 'numeric'
-      })
-    }
-
-    const exportAnalytics = () => {
-      console.log('Экспорт аналитики...')
-    }
-
-    const sendEmailReport = () => {
-      console.log('Отправка отчета...')
-    }
-
-    onMounted(() => {
-      loadAnalytics()
-      users.value = [
-        { id: 1, username: 'ivanov' },
-        { id: 2, username: 'petrov' },
-        { id: 3, username: 'sidorova' }
-      ]
+    onMounted(async () => {
+      await loadUserProjects()
+      await loadProjectUsers('all')
+      await loadAnalytics()
     })
 
     return {
       selectedPeriod,
       selectedTeam,
+      selectedProject,
       analytics,
       userWorkload,
       priorityDistribution,
       projectsActivity,
-      weeklyActivity,
-      users,
+      availableUsers,
+      availableProjects,
       loading,
       loadAnalytics,
+      onProjectChange,
       getTrendClass,
       getTrendIcon,
-      getPriorityLabel,
-      formatWeek,
-      exportAnalytics,
-      sendEmailReport
+      getPriorityLabel
     }
   }
 }
@@ -480,22 +637,6 @@ export default {
   min-width: 180px;
 }
 
-.refresh-btn {
-  background: linear-gradient(135deg, #B54B11 0%, #CE7939 100%);
-  color: #E6D1A4;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 20px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.refresh-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(181, 75, 17, 0.4);
-}
-
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -533,11 +674,6 @@ export default {
 .metric-icon.overdue {
   background: rgba(244, 67, 54, 0.2);
   color: #F44336;
-}
-
-.metric-icon.productivity {
-  background: rgba(33, 150, 243, 0.2);
-  color: #2196F3;
 }
 
 .metric-info h3 {
@@ -589,10 +725,6 @@ export default {
   border: 1px solid rgba(206, 121, 57, 0.3);
 }
 
-.analytics-section.full-width {
-  grid-column: 1 / -1;
-}
-
 .analytics-section h3 {
   color: #CE7939;
   margin: 0 0 20px 0;
@@ -603,7 +735,6 @@ export default {
   color: #E6D1A4;
 }
 
-/* Стили для Workload Chart */
 .workload-item {
   display: flex;
   align-items: center;
@@ -697,7 +828,6 @@ export default {
   background: #F44336;
 }
 
-/* Стили для приоритетов */
 .priority-grid {
   display: grid;
   gap: 10px;
@@ -752,7 +882,6 @@ export default {
   text-align: right;
 }
 
-/* Стили для проектов */
 .projects-activity {
   display: grid;
   gap: 15px;
@@ -790,96 +919,6 @@ export default {
   opacity: 0.8;
 }
 
-/* Стили для временной шкалы */
-.timeline-chart {
-  display: flex;
-  gap: 15px;
-  overflow-x: auto;
-  padding: 10px 0;
-}
-
-.timeline-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 80px;
-}
-
-.timeline-label {
-  font-size: 0.8em;
-  opacity: 0.7;
-  margin-bottom: 10px;
-}
-
-.timeline-bars {
-  display: flex;
-  gap: 15px;
-  height: 120px;
-  align-items: end;
-}
-
-.timeline-bar {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.bar-label {
-  font-size: 0.7em;
-  opacity: 0.7;
-}
-
-.bar-container {
-  height: 100px;
-  width: 20px;
-  background: rgba(72, 9, 2, 0.6);
-  border-radius: 10px;
-  position: relative;
-  overflow: hidden;
-}
-
-.bar {
-  width: 100%;
-  position: absolute;
-  bottom: 0;
-  border-radius: 10px;
-  transition: height 0.3s ease;
-}
-
-.bar.created { background: #CE7939; }
-.bar.completed { background: #4CAF50; }
-
-.bar-value {
-  font-size: 0.8em;
-  font-weight: 600;
-}
-
-.analytics-actions {
-  display: flex;
-  gap: 15px;
-  justify-content: center;
-  padding-top: 20px;
-  border-top: 1px solid rgba(206, 121, 57, 0.3);
-}
-
-.export-btn, .email-btn {
-  background: linear-gradient(135deg, #B54B11 0%, #CE7939 100%);
-  color: #E6D1A4;
-  border: none;
-  border-radius: 8px;
-  padding: 12px 24px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.export-btn:hover, .email-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(181, 75, 17, 0.4);
-}
-
-/* Адаптивность */
 @media (max-width: 768px) {
   .analytics-sections {
     grid-template-columns: 1fr;
