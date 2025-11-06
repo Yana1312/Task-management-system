@@ -5,15 +5,44 @@
         <div class="projects-header">АКТИВНЫЕ ПРОЕКТЫ</div>
         <div class="active-projects-main">
           <h3 class="section-title">ЛИЧНЫЕ ПРОЕКТЫ</h3>
-          <div class="project-row"><span class="project-name">КУРС МАТЕМАТИКИ</span><span class="project-progress">52%</span></div>
-          <div class="project-row"><span class="project-name">ИЗУЧЕНИЕ PYTHON</span><span class="project-progress">75%</span></div>
+          <div 
+            v-for="project in personalProjects" 
+            :key="project.id"
+            class="project-row"
+          >
+            <span class="project-name">{{ project.title }}</span>
+            <div class="project-progress-container">
+              <div class="progress-bar">
+                <div 
+                  class="progress-fill" 
+                  :style="{ width: project.completionRate + '%' }"
+                  :class="getProgressClass(project.completionRate)"
+                ></div>
+              </div>
+              <span class="project-progress">{{ project.completionRate }}%</span>
+            </div>
+          </div>
 
           <h3 class="section-title">КОМАНДНЫЕ ПРОЕКТЫ</h3>
-          <div class="project-row"><span class="project-name">ВЕБ-РАЗРАБОТКА</span><span class="project-progress">30%</span></div>
-          <div class="project-row"><span class="project-name">МОБИЛЬНОЕ ПРИЛОЖЕНИЕ</span><span class="project-progress">15%</span></div>
-          <div class="project-row"><span class="project-name">ДИЗАЙН ИНТЕРФЕЙСА</span><span class="project-progress">90%</span></div>
+          <div 
+            v-for="project in teamProjects" 
+            :key="project.id"
+            class="project-row"
+          >
+            <span class="project-name">{{ project.title }}</span>
+            <div class="project-progress-container">
+              <div class="progress-bar">
+                <div 
+                  class="progress-fill" 
+                  :style="{ width: project.completionRate + '%' }"
+                  :class="getProgressClass(project.completionRate)"
+                ></div>
+              </div>
+              <span class="project-progress">{{ project.completionRate }}%</span>
+            </div>
+          </div>
           
-          <button class="show-more-button">ПОКАЗАТЬ БОЛЬШЕ...</button>
+          <button class="show-more-button" @click="loadMoreProjects">ПОКАЗАТЬ БОЛЬШЕ...</button>
         </div>
       </div>
 
@@ -23,31 +52,72 @@
           <div class="project-sections">
             <div class="personal-projects">
               <h2 class="section-title">ЛИЧНЫЕ ПРОЕКТЫ</h2>
-              <div class="project-card">
-                <div class="card-title">КУРС МАТЕМАТИКИ</div>
+              <div 
+                v-for="project in personalProjects" 
+                :key="project.id"
+                class="project-card"
+              >
+                <div class="card-title">{{ project.title }}</div>
+                <div class="project-progress-info">
+                  <div class="progress-stats">
+                    <span>Завершено: {{ project.completedTasks }}/{{ project.totalTasks }} задач</span>
+                    <span class="progress-percentage">{{ project.completionRate }}%</span>
+                  </div>
+                  <div class="progress-bar-mini">
+                    <div 
+                      class="progress-fill-mini" 
+                      :style="{ width: project.completionRate + '%' }"
+                      :class="getProgressClass(project.completionRate)"
+                    ></div>
+                  </div>
+                </div>
                 <div class="lesson-item">
                   <div>
-                    <div class="lesson-title">ПЕРВЫЙ УРОК</div>
-                    <div class="lesson-time">ОСТАЛОСЬ ВРЕМЕНИ: 2 ДНЯ</div>
+                    <div class="lesson-title">ПОСЛЕДНЯЯ АКТИВНОСТЬ</div>
+                    <div class="lesson-time">Обновлено: {{ formatDate(project.updated_at) }}</div>
                   </div>
                   <i class="fas fa-pencil-alt edit-icon"></i>
                 </div>
-                <button class="edit-button">РЕДАКТИРОВАТЬ ПРОЕКТ</button>
+                <button class="edit-button" @click="openProject(project)">ОТКРЫТЬ ПРОЕКТ</button>
               </div>
             </div>
             <div class="team-projects">
               <h2 class="section-title">КОМАНДНЫЕ ПРОЕКТЫ</h2>
-              <div class="project-card">
-                <div class="card-title">ВЕБ-РАЗРАБОТКА</div>
+              <div 
+                v-for="project in teamProjects" 
+                :key="project.id"
+                class="project-card"
+              >
+                <div class="card-title">{{ project.title }}</div>
+                <div class="project-progress-info">
+                  <div class="progress-stats">
+                    <span>Завершено: {{ project.completedTasks }}/{{ project.totalTasks }} задач</span>
+                    <span class="progress-percentage">{{ project.completionRate }}%</span>
+                  </div>
+                  <div class="progress-bar-mini">
+                    <div 
+                      class="progress-fill-mini" 
+                      :style="{ width: project.completionRate + '%' }"
+                      :class="getProgressClass(project.completionRate)"
+                    ></div>
+                  </div>
+                </div>
                 <div class="lesson-item">
                   <div class="team-avatars">
-                    <div style="width: 20px; height: 20px; border-radius: 50%; background-color: #CE7939;"></div>
-                    <div style="width: 20px; height: 20px; border-radius: 50%; background-color: #E6D1A4; margin-left: -5px;"></div>
+                    <div 
+                      v-for="member in project.members" 
+                      :key="member.id"
+                      class="avatar"
+                      :class="member.isCurrentUser ? 'avatar-alt' : ''"
+                      :title="member.email"
+                    ></div>
                   </div>
-                  <div><div class="lesson-title">ПЕРВЫЙ УРОК</div></div>
+                  <div>
+                    <div class="lesson-title">КОМАНДА: {{ project.members.length }} участников</div>
+                  </div>
                   <i class="fas fa-pencil-alt edit-icon"></i>
                 </div>
-                <button class="edit-button">РЕДАКТИРОВАТЬ ПРОЕКТ</button>
+                <button class="edit-button" @click="openProject(project)">ОТКРЫТЬ ПРОЕКТ</button>
               </div>
             </div>
           </div>
@@ -78,6 +148,7 @@
               }"
             >
               <div class="task-content">
+
                 <span class="task-title">{{ task.title }}</span>
                 <div class="task-meta">
                   <span v-if="task.due_date" class="task-due-date" :class="getDueDateClass(task.due_date)">
@@ -85,6 +156,12 @@
                   </span>
                   <span v-if="task.priority" class="priority-badge" :class="task.priority">
                     {{ getPriorityLabel(task.priority) }}
+                  </span>
+                  <span v-if="task.approval_status === 'pending'" class="approval-badge pending">
+                    На проверке
+                  </span>
+                  <span v-if="task.approval_status === 'rejected'" class="approval-badge rejected">
+                    Требует доработки
                   </span>
                 </div>
                 <div class="task-project" v-if="getProjectInfo(task)">
@@ -109,12 +186,173 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase.js'
 import { auth } from '../js/auth.js'
 import PomodoroTimer from '../components/PomodoroTimer.vue'
 
+const router = useRouter()
 const tasks = ref([])
+const projects = ref([])
 const loading = ref(true)
+const projectsLoading = ref(true)
+
+const personalProjects = computed(() => {
+  return projects.value.filter(project => project.isPersonal)
+})
+
+const teamProjects = computed(() => {
+  return projects.value.filter(project => !project.isPersonal)
+})
+
+const loadProjectsWithProgress = async () => {
+  projectsLoading.value = true
+  const userId = await getCurrentUserId()
+  if (!userId) {
+    projectsLoading.value = false
+    return
+  }
+
+  try {
+    const { data: userBoards, error: boardsError } = await supabase
+      .from('user_roles')
+      .select(`
+        board_id,
+        boards (
+          id,
+          title,
+          description,
+          background,
+          creator_id,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq('user_id', userId)
+
+    if (boardsError) throw boardsError
+
+    const { data: createdBoards, error: createdError } = await supabase
+      .from('boards')
+      .select('*')
+      .eq('creator_id', userId)
+
+    if (createdError) throw createdError
+
+    const allBoardIds = new Set()
+    const allBoards = []
+
+    userBoards?.forEach(role => {
+      if (role.boards && !allBoardIds.has(role.boards.id)) {
+        allBoardIds.add(role.boards.id)
+        allBoards.push(role.boards)
+      }
+    })
+
+    createdBoards?.forEach(board => {
+      if (!allBoardIds.has(board.id)) {
+        allBoardIds.add(board.id)
+        allBoards.push(board)
+      }
+    })
+
+    const projectsWithProgress = []
+
+    for (const board of allBoards) {
+      const { data: boardMembers, error: membersError } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('board_id', board.id)
+
+      if (membersError) {
+        console.error('Ошибка загрузки участников:', membersError)
+        continue
+      }
+
+      const { data: boardTasks, error: tasksError } = await supabase
+        .from('tasks')
+        .select('id, is_completed, approval_status')
+        .eq('column_id', 
+          supabase.from('columns')
+            .select('id')
+            .eq('board_id', board.id)
+        )
+
+      if (tasksError) {
+        console.error('Ошибка загрузки задач:', tasksError)
+        continue
+      }
+
+      const totalTasks = boardTasks?.length || 0
+      const completedTasks = boardTasks?.filter(task => 
+        task.is_completed && task.approval_status === 'approved'
+      ).length || 0
+
+      const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+      const { data: membersData, error: membersDataError } = await supabase
+        .from('user_roles')
+        .select(`
+          user_id,
+          users:user_id (email, id)
+        `)
+        .eq('board_id', board.id)
+
+      const members = membersData?.map(item => ({
+        id: item.user_id,
+        email: item.users?.email,
+        isCurrentUser: item.user_id === userId
+      })) || []
+
+      projectsWithProgress.push({
+        id: board.id,
+        title: board.title,
+        description: board.description,
+        background: board.background,
+        creator_id: board.creator_id,
+        created_at: board.created_at,
+        updated_at: board.updated_at,
+        totalTasks,
+        completedTasks,
+        completionRate,
+        members,
+        isPersonal: members.length === 1 && board.creator_id === userId
+      })
+    }
+
+    projects.value = projectsWithProgress.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+
+  } catch (error) {
+    console.error('Ошибка загрузки проектов:', error)
+    projects.value = []
+  } finally {
+    projectsLoading.value = false
+  }
+}
+
+const getProgressClass = (completionRate) => {
+  if (completionRate >= 80) return 'progress-high'
+  if (completionRate >= 50) return 'progress-medium'
+  return 'progress-low'
+}
+
+const formatDate = (dateString) => {
+  if (!dateString) return ''
+  try {
+    return new Date(dateString).toLocaleDateString('ru-RU')
+  } catch {
+    return ''
+  }
+}
+
+const openProject = (project) => {
+  router.push({ name: 'board', params: { id: project.id } })
+}
+
+const loadMoreProjects = () => {
+  // В реальном приложении здесь будет пагинация
+  console.log('Загрузка дополнительных проектов...')
+}
 
 const sortedTasks = computed(() => {
   return [...tasks.value].sort((a, b) => {
@@ -149,7 +387,6 @@ const loadTasks = async () => {
         )
       `)
       .or(`creator_id.eq.${userId},assignee_id.eq.${userId}`)
-      .eq('is_completed', false) 
       .order('created_at', { ascending: false })
 
     if (error) throw error
@@ -179,6 +416,7 @@ const isTaskUrgent = (dueDate) => {
   const diffTime = due.getTime() - now.getTime()
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   return diffDays <= 3
+
 }
 
 const getDueDateClass = (dueDate) => {
@@ -237,6 +475,7 @@ const getProjectColor = (task) => {
 
 onMounted(() => {
   loadTasks()
+  loadProjectsWithProgress()
   
   const menuItems = document.querySelectorAll('.menu-item')
   const pageContents = document.querySelectorAll('.page-content')
@@ -256,6 +495,93 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.project-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 120px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(72, 9, 2, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.progress-high {
+  background: #10b981;
+}
+
+.progress-medium {
+  background: #f59e0b;
+}
+
+.progress-low {
+  background: #ef4444;
+}
+
+.project-progress-info {
+  margin-bottom: 15px;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 0.9em;
+  color: #E6D1A4;
+}
+
+.progress-percentage {
+  font-weight: bold;
+  color: #CE7939;
+}
+
+.progress-bar-mini {
+  height: 6px;
+  background: rgba(72, 9, 2, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill-mini {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.approval-badge {
+  font-size: 0.7em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.approval-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.approval-badge.rejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.task-item.pending {
+  border-left-color: #f59e0b;
+}
+
+.task-item.rejected {
+  border-left-color: #ef4444;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;

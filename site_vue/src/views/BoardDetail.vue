@@ -13,25 +13,75 @@
                 v-for="t in tasksByColumn[col.id] || []" 
                 :key="t.id" 
                 class="kanban-item"
-                :class="{ 'task-completed': t.is_completed }"
+                :class="{ 
+                  'task-completed': t.is_completed && t.approval_status === 'approved',
+                  'task-pending': t.approval_status === 'pending',
+                  'task-rejected': t.approval_status === 'rejected'
+                }"
                 @click="openTaskDetails(t)"
               >
                 <div class="item-header">
                   <div class="item-title">{{ t.title }}</div>
                   <div class="task-status-controls">
-                    <button 
-                      v-if="canChangeTaskStatus(t)"
-                      class="status-toggle-btn"
-                      :class="t.is_completed ? 'completed' : 'incomplete'"
-                      @click.stop="toggleTaskStatus(t)"
-                      :title="t.is_completed ? 'Отметить как не выполненную' : 'Отметить как выполненную'"
-                    >
-                      {{ t.is_completed ? '✓' : '○' }}
-                    </button>
+                    <!-- Для исполнителя: кнопки смены статуса -->
+                    <div v-if="!isAdmin && canChangeTaskStatus(t)" class="user-status-actions">
+                      <button 
+                        v-if="isPlannedColumn(t.column_id) && !t.is_completed"
+                        class="status-btn move-to-work"
+                        @click.stop="moveToWork(t)"
+                        title="Перевести в работу"
+                      >
+                        ➡️ В работу
+                      </button>
+                      <button 
+                        v-if="isWorkColumn(t.column_id) && !t.is_completed"
+                        class="status-btn move-to-done"
+                        @click.stop="moveToDone(t)"
+                        title="Отметить как выполненную"
+                      >
+                        ✅ Готово
+                      </button>
+                    </div>
+                    
+                    <!-- Статус подтверждения -->
+                    <div v-if="t.is_completed" class="approval-status">
+                      <span v-if="t.approval_status === 'pending'" class="status-pending">
+                        ⏳ На проверке
+                      </span>
+                      <span v-if="t.approval_status === 'approved'" class="status-approved">
+                        ✅ Одобрено
+                      </span>
+                      <span v-if="t.approval_status === 'rejected'" class="status-rejected">
+                        ❌ Требует доработки
+                      </span>
+                    </div>
+                    
+                    <!-- Для админа: кнопки подтверждения/отклонения -->
+                    <div v-if="isAdmin && t.is_completed && t.approval_status === 'pending'" class="admin-actions">
+                      <button 
+                        class="admin-btn approve-btn"
+                        @click.stop="approveTask(t)"
+                        title="Подтвердить выполнение"
+                      >
+                        ✓
+                      </button>
+                      <button 
+                        class="admin-btn reject-btn"
+                        @click.stop="openRejectModal(t)"
+                        title="Отклонить и указать доработки"
+                      >
+                        ✗
+                      </button>
+                    </div>
                   </div>
                 </div>
                 
                 <div class="item-desc" v-if="t.description">{{ t.description }}</div>
+                
+                <!-- Комментарий админа при отклонении -->
+                <div v-if="t.approval_comment && t.approval_status === 'rejected'" class="admin-comment">
+                  <strong>Комментарий админа:</strong> {{ t.approval_comment }}
+                </div>
                 
                 <div v-if="t.due_date" class="item-due-date" :class="getDueDateClass(t.due_date)">
                   <span class="due-date-icon">📅</span>
@@ -51,8 +101,8 @@
                   <span v-if="t.assignee_email" class="assignee-badge">
                     👤 {{ t.assignee_email }}
                   </span>
-                  <span v-if="t.is_completed" class="status-badge completed">
-                    ✓ Выполнено
+                  <span v-if="isAdmin" class="edit-badge" @click.stop="openEditModal(t)">
+                    ✏️ Редактировать
                   </span>
                 </div>
               </div>
@@ -62,21 +112,22 @@
         </div>
       </div>
       
-      <button class="boards-create-btn" @click="openModal" aria-label="Создать задачу">+</button>
+      <!-- Кнопка создания задачи (только для админа) -->
+      <button v-if="isAdmin" class="boards-create-btn" @click="openCreateModal" aria-label="Создать задачу">+</button>
     </div>
 
-
-    <div v-if="showModal" class="boards-modal-overlay" @click="closeModal">
+    <!-- Модальное окно создания задачи (только для админа) -->
+    <div v-if="showCreateModal && isAdmin" class="boards-modal-overlay" @click="closeCreateModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
           <h2 class="boards-modal-title">Создание задачи</h2>
-          <button class="boards-modal-close" @click="closeModal">×</button>
+          <button class="boards-modal-close" @click="closeCreateModal">×</button>
         </div>
         
         <div class="boards-modal-body">
           <div class="boards-modal-section">
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Название задачи</label>
+              <label class="boards-modal-label">Название задачи *</label>
               <input 
                 v-model="newTask.title" 
                 class="boards-modal-input" 
@@ -94,7 +145,7 @@
             </div>
 
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Колонка</label>
+              <label class="boards-modal-label">Колонка *</label>
               <select v-model="newTask.column_id" class="boards-modal-input">
                 <option v-for="col in columns" :key="col.id" :value="col.id">
                   {{ col.title }}
@@ -102,17 +153,22 @@
               </select>
             </div>
 
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Исполнитель задачи</label>
+            <div class="boards-modal-field" v-if="isTeamProject">
+              <label class="boards-modal-label">Исполнитель задачи *</label>
               <select v-model="newTask.assignee_email" class="boards-modal-input" required>
                 <option value="">Выберите исполнителя</option>
-                <option v-for="user in availableUsers" :key="user.id" :value="user.email">
+                <option v-for="user in boardMembers" :key="user.id" :value="user.email">
                   {{ user.email }}
                 </option>
               </select>
-              <div class="boards-modal-hint">
-                Основной исполнитель задачи
+            </div>
+
+            <div class="boards-modal-field" v-else>
+              <label class="boards-modal-label">Исполнитель задачи</label>
+              <div class="fixed-assignee">
+                {{ currentUser?.email }} (Вы)
               </div>
+              <input type="hidden" v-model="newTask.assignee_email" />
             </div>
 
             <div class="boards-modal-field">
@@ -133,21 +189,18 @@
                 class="boards-modal-input" 
                 :min="new Date().toISOString().split('T')[0]"
               />
-              <div class="boards-modal-hint">
-                Оставьте пустым, если срок не установлен
-              </div>
             </div>
           </div>
         </div>
         
         <div class="boards-modal-actions">
-          <button class="boards-modal-btn boards-modal-btn-cancel" @click="closeModal">
+          <button class="boards-modal-btn boards-modal-btn-cancel" @click="closeCreateModal">
             Отменить
           </button>
           <button 
             class="boards-modal-btn boards-modal-btn-create" 
             @click="createTask"
-            :disabled="!newTask.title.trim() || !newTask.assignee_email || creating"
+            :disabled="!newTask.title.trim() || !newTask.column_id || creating || (isTeamProject && !newTask.assignee_email)"
           >
             {{ creating ? 'Создание...' : 'Создать задачу' }}
           </button>
@@ -155,12 +208,12 @@
       </div>
     </div>
 
-
-    <div v-if="showTaskModal" class="boards-modal-overlay" @click="closeTaskModal">
+    <!-- Модальное окно редактирования задачи (только для админа) -->
+    <div v-if="showEditModal && isAdmin" class="boards-modal-overlay" @click="closeEditModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
           <h2 class="boards-modal-title">Редактирование задачи</h2>
-          <button class="boards-modal-close" @click="closeTaskModal">×</button>
+          <button class="boards-modal-close" @click="closeEditModal">×</button>
         </div>
         
         <div class="boards-modal-body">
@@ -168,85 +221,50 @@
             <div class="boards-modal-field">
               <label class="boards-modal-label">Название задачи *</label>
               <input 
-                v-model="selectedTask.title" 
+                v-model="editingTask.title" 
                 class="boards-modal-input" 
                 placeholder="Введите название задачи"
-                @input="debouncedUpdateTitle"
-                :disabled="updating"
               />
             </div>
             
             <div class="boards-modal-field">
               <label class="boards-modal-label">Описание</label>
               <textarea 
-                v-model="selectedTask.description" 
+                v-model="editingTask.description" 
                 class="boards-modal-textarea" 
                 placeholder="Описание задачи"
-                @input="debouncedUpdateDescription"
-                :disabled="updating"
               ></textarea>
             </div>
 
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Статус выполнения</label>
-              <div class="task-status-control">
-                <button 
-                  class="status-toggle-btn-large"
-                  :class="selectedTask.is_completed ? 'completed' : 'incomplete'"
-                  @click="toggleSelectedTaskStatus"
-                  :disabled="!canChangeTaskStatus(selectedTask)"
-                >
-                  <span class="status-icon">{{ selectedTask.is_completed ? '✓' : '○' }}</span>
-                  <span class="status-text">
-                    {{ selectedTask.is_completed ? 'Задача выполнена' : 'Задача не выполнена' }}
-                  </span>
-                </button>
-                <div class="boards-modal-hint" v-if="canChangeTaskStatus(selectedTask)">
-                  {{ selectedTask.is_completed ? 'Нажмите, чтобы отметить как не выполненную' : 'Нажмите, чтобы отметить как выполненную' }}
-                </div>
-                <div class="boards-modal-hint" v-else>
-                  Только исполнитель задачи может менять статус выполнения
-                </div>
-              </div>
-            </div>
-
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Статус (колонка)</label>
-              <select 
-                v-model="selectedTask.column_id" 
-                class="boards-modal-input"
-                @change="updateTaskStatus"
-              >
+              <label class="boards-modal-label">Колонка *</label>
+              <select v-model="editingTask.column_id" class="boards-modal-input">
                 <option v-for="col in columns" :key="col.id" :value="col.id">
                   {{ col.title }}
                 </option>
               </select>
             </div>
 
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Исполнитель задачи</label>
-              <select 
-                v-model="selectedTask.assignee_email" 
-                class="boards-modal-input"
-                @change="updateTaskAssignee"
-              >
+            <div class="boards-modal-field" v-if="isTeamProject">
+              <label class="boards-modal-label">Исполнитель задачи *</label>
+              <select v-model="editingTask.assignee_email" class="boards-modal-input" required>
                 <option value="">Выберите исполнителя</option>
-                <option v-for="user in availableUsers" :key="user.id" :value="user.email">
+                <option v-for="user in boardMembers" :key="user.id" :value="user.email">
                   {{ user.email }}
                 </option>
               </select>
-              <div class="boards-modal-hint">
-                Текущий исполнитель: {{ selectedTask.assignee_email || 'Не назначен' }}
+            </div>
+
+            <div class="boards-modal-field" v-else>
+              <label class="boards-modal-label">Исполнитель задачи</label>
+              <div class="fixed-assignee">
+                {{ currentUser?.email }} (Вы)
               </div>
             </div>
 
             <div class="boards-modal-field">
               <label class="boards-modal-label">Приоритет</label>
-              <select 
-                v-model="selectedTask.priority" 
-                class="boards-modal-input"
-                @change="updateTaskPriority"
-              >
+              <select v-model="editingTask.priority" class="boards-modal-input">
                 <option value="low">Низкий</option>
                 <option value="medium">Средний</option>
                 <option value="high">Высокий</option>
@@ -258,104 +276,66 @@
               <label class="boards-modal-label">Срок выполнения</label>
               <input 
                 type="date" 
-                v-model="selectedTask.due_date" 
-                class="boards-modal-input"
-                @change="updateTaskDueDate"
+                v-model="editingTask.due_date" 
+                class="boards-modal-input" 
               />
-              <div class="boards-modal-hint">
-                <span v-if="selectedTask?.due_date" :class="getDueDateClass(selectedTask.due_date)">
-                  {{ getDueDateText(selectedTask.due_date) }}
-                </span>
-                <span v-else>Срок не установлен</span>
-              </div>
-            </div>
-
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Дата создания</label>
-              <div class="task-created-date">
-                {{ formatDate(selectedTask.created_at) }}
-              </div>
-            </div>
-
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Создатель задачи</label>
-              <div class="task-creator-info">
-                {{ selectedTask.creator_email || 'Неизвестно' }}
-              </div>
             </div>
           </div>
+        </div>
+        
+        <div class="boards-modal-actions">
+          <button 
+            class="boards-modal-btn boards-modal-btn-danger" 
+            @click="deleteTask"
+            :disabled="deleting"
+          >
+            {{ deleting ? 'Удаление...' : 'Удалить задачу' }}
+          </button>
+          <button class="boards-modal-btn boards-modal-btn-cancel" @click="closeEditModal">
+            Отменить
+          </button>
+          <button 
+            class="boards-modal-btn boards-modal-btn-create" 
+            @click="updateTask"
+            :disabled="!editingTask.title.trim() || !editingTask.column_id || updating"
+          >
+            {{ updating ? 'Сохранение...' : 'Сохранить изменения' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
-          <div class="boards-modal-section" v-if="selectedTask.is_completed">
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Прикрепленные файлы</label>
-              <div class="file-upload-section">
-                <div class="file-upload-area" 
-                     @click="triggerFileInput"
-                     @drop="handleFileDrop"
-                     @dragover.prevent
-                     @dragenter.prevent>
-                  <input 
-                    type="file" 
-                    ref="fileInput"
-                    @change="handleFileSelect"
-                    multiple
-                    style="display: none"
-                  />
-                  <div class="file-upload-content">
-                    <div class="file-upload-icon">📎</div>
-                    <div class="file-upload-text">
-                      Перетащите файлы сюда или нажмите для выбора
-                    </div>
-                    <div class="file-upload-hint">
-                      Максимальный размер: 50MB
-                    </div>
-                  </div>
-                </div>
-                
-                <div v-if="selectedTask.attachments && selectedTask.attachments.length > 0" class="attachments-list">
-                  <div class="attachments-title">Прикрепленные файлы:</div>
-                  <div 
-                    v-for="attachment in selectedTask.attachments" 
-                    :key="attachment.id"
-                    class="attachment-item"
-                  >
-                    <div class="attachment-info">
-                      <span class="attachment-name">{{ attachment.filename }}</span>
-                      <span class="attachment-size">{{ formatFileSize(attachment.file_size) }}</span>
-                    </div>
-                    <div class="attachment-actions">
-                      <button 
-                        class="attachment-btn attachment-download"
-                        @click="downloadAttachment(attachment)"
-                        title="Скачать"
-                      >
-                        ⬇️
-                      </button>
-                      <button 
-                        class="attachment-btn attachment-delete"
-                        @click="deleteAttachment(attachment.id)"
-                        title="Удалить"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+    <!-- Модальное окно отклонения задачи (для админа) -->
+    <div v-if="showRejectModal" class="boards-modal-overlay" @click="closeRejectModal">
+      <div class="boards-modal" @click.stop>
+        <div class="boards-modal-header">
+          <h2 class="boards-modal-title">Отклонение задачи</h2>
+          <button class="boards-modal-close" @click="closeRejectModal">×</button>
+        </div>
+        
+        <div class="boards-modal-body">
+          <div class="boards-modal-field">
+            <label class="boards-modal-label">Что нужно доделать?</label>
+            <textarea 
+              v-model="rejectionComment" 
+              class="boards-modal-textarea" 
+              placeholder="Опишите, что требуется доработать..."
+              rows="4"
+            ></textarea>
           </div>
-
-          <div class="boards-modal-section">
-            <div class="boards-modal-actions">
-              <button 
-                class="boards-modal-btn boards-modal-btn-danger" 
-                @click="deleteTask"
-                :disabled="deleting"
-              >
-                {{ deleting ? 'Удаление...' : 'Удалить задачу' }}
-              </button>
-            </div>
-          </div>
+        </div>
+        
+        <div class="boards-modal-actions">
+          <button class="boards-modal-btn boards-modal-btn-cancel" @click="closeRejectModal">
+            Отмена
+          </button>
+          <button 
+            class="boards-modal-btn boards-modal-btn-danger" 
+            @click="rejectTask"
+            :disabled="!rejectionComment.trim() || rejecting"
+          >
+            {{ rejecting ? 'Отклонение...' : 'Отклонить' }}
+          </button>
         </div>
       </div>
     </div>
@@ -376,16 +356,18 @@ const boardId = ref(route.params.id)
 const board = ref(null)
 const columns = ref([])
 const tasks = ref([])
-const availableUsers = ref([])
+const boardMembers = ref([])
 const loading = ref(true)
 const currentUser = ref(null)
+const isAdmin = ref(false)
 
-const showModal = ref(false)
-const showTaskModal = ref(false)
+const showCreateModal = ref(false)
+const showEditModal = ref(false)
+const showRejectModal = ref(false)
 const creating = ref(false)
-const deleting = ref(false)
 const updating = ref(false)
-const uploading = ref(false)
+const deleting = ref(false)
+const rejecting = ref(false)
 
 const newTask = ref({
   title: '',
@@ -395,14 +377,19 @@ const newTask = ref({
   priority: 'medium',
   due_date: null
 })
-const selectedTask = ref(null)
 
-const fileInput = ref(null)
+const editingTask = ref({
+  id: null,
+  title: '',
+  description: '',
+  column_id: null,
+  assignee_email: '',
+  priority: 'medium',
+  due_date: null
+})
 
-let titleUpdateTimeout = null
-let descriptionUpdateTimeout = null
-
-const toast = ref({ visible: false, type: 'success', message: '' })
+const taskToReject = ref(null)
+const rejectionComment = ref('')
 
 const tasksByColumn = computed(() => {
   const grouped = {}
@@ -412,15 +399,46 @@ const tasksByColumn = computed(() => {
   return grouped
 })
 
-const isTaskCompleted = computed(() => {
-  if (!selectedTask.value) return false
-  const doneColumn = columns.value.find(col => col.title.toLowerCase().includes('готово'))
-  return doneColumn && selectedTask.value.column_id === doneColumn.id
+const isTeamProject = computed(() => {
+  return boardMembers.value.length > 1
 })
 
-const canChangeTaskStatus = (task) => {
-  if (!currentUser.value || !task) return false
-  return task.assignee_id === currentUser.value.id
+// Определяем колонки по их названиям
+const plannedColumn = computed(() => {
+  return columns.value.find(col => 
+    col.title.toLowerCase().includes('план') || 
+    col.title.toLowerCase().includes('plan') ||
+    col.title.toLowerCase().includes('todo')
+  )
+})
+
+const workColumn = computed(() => {
+  return columns.value.find(col => 
+    col.title.toLowerCase().includes('работ') || 
+    col.title.toLowerCase().includes('work') ||
+    col.title.toLowerCase().includes('progress') ||
+    col.title.toLowerCase().includes('в работе')
+  )
+})
+
+const doneColumn = computed(() => {
+  return columns.value.find(col => 
+    col.title.toLowerCase().includes('готов') || 
+    col.title.toLowerCase().includes('done') ||
+    col.title.toLowerCase().includes('complete')
+  )
+})
+
+const isPlannedColumn = (columnId) => {
+  return plannedColumn.value?.id === columnId
+}
+
+const isWorkColumn = (columnId) => {
+  return workColumn.value?.id === columnId
+}
+
+const isDoneColumn = (columnId) => {
+  return doneColumn.value?.id === columnId
 }
 
 const getCurrentUser = async () => {
@@ -448,24 +466,59 @@ const getCurrentUser = async () => {
           .select()
           .single()
       }
+      
+      await checkAdminStatus()
     }
   } catch (error) {
     console.error('Ошибка получения пользователя:', error)
   }
 }
 
-const loadAvailableUsers = async () => {
+const checkAdminStatus = async () => {
+  try {
+    const { data: userRoles, error } = await supabase
+      .from('user_roles')
+      .select(`
+        role_id,
+        roles:role_id (name_role)
+      `)
+      .eq('board_id', boardId.value)
+      .eq('user_id', currentUser.value.id)
+      .single()
+
+    if (error) {
+      console.log('Пользователь не является админом этого проекта')
+      isAdmin.value = false
+      return
+    }
+
+    isAdmin.value = userRoles.roles?.name_role === 'admin'
+  } catch (error) {
+    console.error('Ошибка проверки прав админа:', error)
+    isAdmin.value = false
+  }
+}
+
+const loadBoardMembers = async () => {
   try {
     const { data, error } = await supabase
-      .from('users')
-      .select('id, email')
-      .order('email', { ascending: true })
-    
+      .from('user_roles')
+      .select(`
+        user_id,
+        users:user_id (email, id)
+      `)
+      .eq('board_id', boardId.value)
+
     if (error) throw error
-    availableUsers.value = data || []
+    
+    boardMembers.value = data?.map(item => ({
+      id: item.user_id,
+      email: item.users?.email
+    })) || []
+    
   } catch (error) {
-    console.error('Ошибка загрузки пользователей:', error)
-    availableUsers.value = []
+    console.error('Ошибка загрузки участников проекта:', error)
+    boardMembers.value = []
   }
 }
 
@@ -498,79 +551,6 @@ const getDueDateClass = (dateString) => {
   return 'due-date-normal'
 }
 
-const getDueDateText = (dateString) => {
-  if (!dateString) return ''
-  
-  const dueDate = new Date(dateString)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  
-  const timeDiff = dueDate.getTime() - today.getTime()
-  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24))
-  
-  if (daysDiff < 0) {
-    return `Просрочено на ${Math.abs(daysDiff)} дн.`
-  } else if (daysDiff === 0) {
-    return 'Сегодня'
-  } else if (daysDiff === 1) {
-    return 'Завтра'
-  } else if (daysDiff <= 3) {
-    return `Через ${daysDiff} дн.`
-  }
-  return `Осталось ${daysDiff} дн.`
-}
-
-const debouncedUpdateTitle = () => {
-  clearTimeout(titleUpdateTimeout)
-  titleUpdateTimeout = setTimeout(() => {
-    updateTaskTitle()
-  }, 1000)
-}
-
-const debouncedUpdateDescription = () => {
-  clearTimeout(descriptionUpdateTimeout)
-  descriptionUpdateTimeout = setTimeout(() => {
-    updateTaskDescription()
-  }, 1000)
-}
-
-const openModal = () => {
-  showModal.value = true
-  if (columns.value.length > 0 && !newTask.value.column_id) {
-    newTask.value.column_id = columns.value[0].id
-  }
-}
-
-const closeModal = () => {
-  showModal.value = false
-  newTask.value = {
-    title: '',
-    description: '',
-    column_id: columns.value.length > 0 ? columns.value[0].id : null,
-    assignee_email: '',
-    priority: 'medium',
-    due_date: null
-  }
-}
-
-const openTaskDetails = async (task) => {
-  selectedTask.value = { ...task }
-  await loadTaskAttachments(task.id)
-  showTaskModal.value = true
-}
-
-const closeTaskModal = () => {
-  showTaskModal.value = false
-  selectedTask.value = null
-  clearTimeout(titleUpdateTimeout)
-  clearTimeout(descriptionUpdateTimeout)
-}
-
-const formatDate = (dateString) => {
-  if (!dateString) return ''
-  return new Date(dateString).toLocaleDateString('ru-RU')
-}
-
 const getPriorityText = (priority) => {
   const priorities = {
     low: 'Низкий',
@@ -581,27 +561,33 @@ const getPriorityText = (priority) => {
   return priorities[priority] || priority
 }
 
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+const canChangeTaskStatus = (task) => {
+  if (!currentUser.value || !task) return false
+  return task.assignee_id === currentUser.value.id
 }
 
-const toggleTaskStatus = async (task) => {
+// Перемещение из "В планах" в "В работе"
+const moveToWork = async (task) => {
   if (!canChangeTaskStatus(task)) {
-    showToast('Только исполнитель задачи может менять статус выполнения', 'warning')
+    showToast('Только исполнитель задачи может менять статус', 'warning')
+    return
+  }
+
+  if (!isPlannedColumn(task.column_id)) {
+    showToast('Задача должна быть в колонке "В планах"', 'error')
+    return
+  }
+
+  if (!workColumn.value) {
+    showToast('Колонка "В работе" не найдена', 'error')
     return
   }
 
   try {
-    const newStatus = !task.is_completed
-    
     const { error } = await supabase
       .from('tasks')
       .update({ 
-        is_completed: newStatus,
+        column_id: workColumn.value.id,
         updated_at: new Date().toISOString()
       })
       .eq('id', task.id)
@@ -610,41 +596,276 @@ const toggleTaskStatus = async (task) => {
 
     const taskIndex = tasks.value.findIndex(t => t.id === task.id)
     if (taskIndex !== -1) {
-      tasks.value[taskIndex].is_completed = newStatus
+      tasks.value[taskIndex].column_id = workColumn.value.id
     }
 
-    if (selectedTask.value && selectedTask.value.id === task.id) {
-      selectedTask.value.is_completed = newStatus
-    }
-
-    showToast(`Задача отмечена как ${newStatus ? 'выполненная' : 'не выполненная'}`, 'success')
+    showToast('Задача перемещена в работу', 'success')
   } catch (error) {
-    console.error('Ошибка изменения статуса задачи:', error)
+    console.error('Ошибка перемещения задачи в работу:', error)
+    showToast('Ошибка при перемещении задачи', 'error')
+  }
+}
+
+// Перемещение из "В работе" в "Готово" (требует подтверждения)
+const moveToDone = async (task) => {
+  if (!canChangeTaskStatus(task)) {
+    showToast('Только исполнитель задачи может менять статус', 'warning')
+    return
+  }
+
+  if (!isWorkColumn(task.column_id)) {
+    showToast('Задача должна быть в колонке "В работе"', 'error')
+    return
+  }
+
+  if (!doneColumn.value) {
+    showToast('Колонка "Готово" не найдена', 'error')
+    return
+  }
+
+  try {
+    const updateData = { 
+      is_completed: true,
+      column_id: doneColumn.value.id,
+      approval_status: 'pending',
+      updated_at: new Date().toISOString()
+    }
+
+    const { error } = await supabase
+      .from('tasks')
+      .update(updateData)
+      .eq('id', task.id)
+
+    if (error) throw error
+
+    const taskIndex = tasks.value.findIndex(t => t.id === task.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].is_completed = true
+      tasks.value[taskIndex].column_id = doneColumn.value.id
+      tasks.value[taskIndex].approval_status = 'pending'
+    }
+
+    showToast('Задача отправлена на проверку администратору', 'success')
+  } catch (error) {
+    console.error('Ошибка отметки задачи как выполненной:', error)
     showToast('Ошибка при изменении статуса задачи', 'error')
   }
 }
 
-const toggleSelectedTaskStatus = async () => {
-  if (!selectedTask.value) return
-  await toggleTaskStatus(selectedTask.value)
+const approveTask = async (task) => {
+  if (!isAdmin.value) {
+    showToast('Только администратор может подтверждать задачи', 'error')
+    return
+  }
+
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        approval_status: 'approved',
+        approval_comment: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', task.id)
+
+    if (error) throw error
+
+    const taskIndex = tasks.value.findIndex(t => t.id === task.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].approval_status = 'approved'
+      tasks.value[taskIndex].approval_comment = null
+    }
+
+    showToast('Задача подтверждена!', 'success')
+  } catch (error) {
+    console.error('Ошибка подтверждения задачи:', error)
+    showToast('Ошибка при подтверждении задачи', 'error')
+  }
+}
+
+const openRejectModal = (task) => {
+  if (!isAdmin.value) return
+  taskToReject.value = task
+  rejectionComment.value = ''
+  showRejectModal.value = true
+}
+
+const closeRejectModal = () => {
+  showRejectModal.value = false
+  taskToReject.value = null
+  rejectionComment.value = ''
+}
+
+const rejectTask = async () => {
+  if (!isAdmin.value || !taskToReject.value) {
+    showToast('Ошибка: нет прав или задача не выбрана', 'error')
+    return
+  }
+
+  rejecting.value = true
+  try {
+    console.log('Отклонение задачи:', taskToReject.value.id)
+    
+    // Находим колонку "В работе" или используем первую доступную колонку
+    let targetColumnId = workColumn.value?.id
+    
+    // Если колонка "В работе" не найдена, используем первую колонку кроме "Готово"
+    if (!targetColumnId) {
+      const availableColumn = columns.value.find(col => 
+        col.id !== doneColumn.value?.id
+      )
+      if (availableColumn) {
+        targetColumnId = availableColumn.id
+      } else {
+        // Если нет других колонок, используем текущую колонку задачи
+        targetColumnId = taskToReject.value.column_id
+      }
+    }
+
+    const updateData = { 
+      is_completed: false,
+      column_id: targetColumnId,
+      approval_status: 'rejected',
+      updated_at: new Date().toISOString()
+    }
+
+    // Добавляем комментарий только если колонка существует
+    if (taskToReject.value.hasOwnProperty('approval_comment')) {
+      updateData.approval_comment = rejectionComment.value
+    }
+
+    console.log('Данные для обновления:', updateData)
+
+    const { error } = await supabase
+      .from('tasks')
+      .update(updateData)
+      .eq('id', taskToReject.value.id)
+
+    if (error) {
+      console.error('Ошибка Supabase:', error)
+      throw error
+    }
+
+    // Обновляем локальное состояние
+    const taskIndex = tasks.value.findIndex(t => t.id === taskToReject.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].is_completed = false
+      tasks.value[taskIndex].column_id = targetColumnId
+      tasks.value[taskIndex].approval_status = 'rejected'
+      
+      if (taskToReject.value.hasOwnProperty('approval_comment')) {
+        tasks.value[taskIndex].approval_comment = rejectionComment.value
+      }
+    }
+
+    showToast('Задача возвращена на доработку', 'success')
+    closeRejectModal()
+  } catch (error) {
+    console.error('Ошибка отклонения задачи:', error)
+    showToast('Ошибка при отклонении задачи: ' + error.message, 'error')
+  } finally {
+    rejecting.value = false
+  }
+}
+
+// Функции для админа (создание, редактирование, удаление)
+const openCreateModal = () => {
+  if (!isAdmin.value) {
+    showToast('Только администратор может создавать задачи', 'error')
+    return
+  }
+  showCreateModal.value = true
+  if (columns.value.length > 0 && !newTask.value.column_id) {
+    newTask.value.column_id = columns.value[0].id
+  }
+  
+  if (!isTeamProject.value && currentUser.value) {
+    newTask.value.assignee_email = currentUser.value.email
+  }
+}
+
+const closeCreateModal = () => {
+  showCreateModal.value = false
+  newTask.value = {
+    title: '',
+    description: '',
+    column_id: columns.value.length > 0 ? columns.value[0].id : null,
+    assignee_email: '',
+    priority: 'medium',
+    due_date: null
+  }
+}
+
+const openEditModal = (task) => {
+  if (!isAdmin.value) {
+    showToast('Только администратор может редактировать задачи', 'error')
+    return
+  }
+  
+  editingTask.value = {
+    id: task.id,
+    title: task.title,
+    description: task.description || '',
+    column_id: task.column_id,
+    assignee_email: task.assignee_email,
+    priority: task.priority || 'medium',
+    due_date: task.due_date ? task.due_date.split('T')[0] : null
+  }
+  showEditModal.value = true
+}
+
+const closeEditModal = () => {
+  showEditModal.value = false
+  editingTask.value = {
+    id: null,
+    title: '',
+    description: '',
+    column_id: null,
+    assignee_email: '',
+    priority: 'medium',
+    due_date: null
+  }
+}
+
+const openTaskDetails = (task) => {
+  // Для исполнителя - открываем модальное окно смены статуса
+  // Для админа - открываем редактирование
+  if (isAdmin.value) {
+    openEditModal(task)
+  } else if (canChangeTaskStatus(task)) {
+    // Для исполнителя показываем информацию о задаче
+    console.log('Открыть детали задачи для исполнителя:', task)
+  }
 }
 
 const createTask = async () => {
-  if (!newTask.value.title.trim() || !newTask.value.assignee_email) return
+  if (!isAdmin.value) {
+    showToast('Только администратор может создавать задачи', 'error')
+    return
+  }
+
+  if (!newTask.value.title.trim() || !newTask.value.column_id) return
   
   creating.value = true
   try {
-    if (!newTask.value.column_id) {
-      throw new Error('Не выбрана колонка для задачи')
-    }
-
     if (!currentUser.value) {
       throw new Error('Пользователь не авторизован')
     }
 
-    const assigneeUser = availableUsers.value.find(user => user.email === newTask.value.assignee_email)
-    if (!assigneeUser) {
-      throw new Error('Выбранный исполнитель не найден')
+    let assigneeId = currentUser.value.id
+    let assigneeEmail = currentUser.value.email
+
+    if (isTeamProject.value) {
+      if (!newTask.value.assignee_email) {
+        throw new Error('Не выбран исполнитель задачи')
+      }
+
+      const assigneeUser = boardMembers.value.find(user => user.email === newTask.value.assignee_email)
+      if (!assigneeUser) {
+        throw new Error('Выбранный исполнитель не найден в проекте')
+      }
+      assigneeId = assigneeUser.id
+      assigneeEmail = assigneeUser.email
     }
 
     const taskData = {
@@ -653,10 +874,11 @@ const createTask = async () => {
       column_id: newTask.value.column_id,
       position: tasks.value.length,
       creator_id: currentUser.value.id,
-      assignee_id: assigneeUser.id,
+      assignee_id: assigneeId,
       priority: newTask.value.priority || 'medium',
       due_date: newTask.value.due_date || null,
       is_completed: false,
+      approval_status: 'pending',
       created_at: new Date().toISOString()
     }
 
@@ -676,25 +898,21 @@ const createTask = async () => {
 
     const updatedTask = {
       ...taskDataResult,
-      assignee_email: taskDataResult.assignee?.email,
+      assignee_email: assigneeEmail,
       creator_email: taskDataResult.creator?.email
     }
 
     tasks.value.push(updatedTask)
     
-    closeModal()
-    showToast('Задача успешно создана для исполнителя', 'success')
+    closeCreateModal()
+    showToast('Задача успешно создана', 'success')
     
   } catch (error) {
     let errorMessage = 'Ошибка при создании задачи'
-    if (error.message.includes('creator_id') || error.message.includes('assignee_id')) {
-      errorMessage = 'Проблема с привязкой пользователя. Убедитесь, что вы авторизованы.'
-    } else if (error.message.includes('Не выбрана колонка')) {
-      errorMessage = 'Выберите колонку для задачи'
-    } else if (error.message.includes('Пользователь не авторизован')) {
-      errorMessage = 'Вы не авторизованы'
-    } else if (error.message.includes('Выбранный исполнитель не найден')) {
-      errorMessage = 'Выбранный исполнитель не найден в системе'
+    if (error.message.includes('Только администратор')) {
+      errorMessage = error.message
+    } else if (error.message.includes('Не выбран исполнитель')) {
+      errorMessage = 'Выберите исполнителя задачи'
     }
     
     showToast(errorMessage, 'error')
@@ -703,199 +921,104 @@ const createTask = async () => {
   }
 }
 
-const updateTaskTitle = async () => {
-  if (!selectedTask.value || !selectedTask.value.title.trim()) {
-    showToast('Название задачи не может быть пустым', 'error')
+const updateTask = async () => {
+  if (!isAdmin.value) {
+    showToast('Только администратор может редактировать задачи', 'error')
     return
   }
+
+  if (!editingTask.value.title.trim() || !editingTask.value.column_id) return
   
   updating.value = true
   try {
+    let assigneeId = currentUser.value.id
+    let assigneeEmail = currentUser.value.email
+
+    if (isTeamProject.value) {
+      if (!editingTask.value.assignee_email) {
+        throw new Error('Не выбран исполнитель задачи')
+      }
+
+      const assigneeUser = boardMembers.value.find(user => user.email === editingTask.value.assignee_email)
+      if (!assigneeUser) {
+        throw new Error('Выбранный исполнитель не найден в проекте')
+      }
+      assigneeId = assigneeUser.id
+      assigneeEmail = assigneeUser.email
+    }
+
     const { error } = await supabase
       .from('tasks')
-      .update({ 
-        title: selectedTask.value.title,
+      .update({
+        title: editingTask.value.title,
+        description: editingTask.value.description || null,
+        column_id: editingTask.value.column_id,
+        assignee_id: assigneeId,
+        priority: editingTask.value.priority || 'medium',
+        due_date: editingTask.value.due_date || null,
         updated_at: new Date().toISOString()
       })
-      .eq('id', selectedTask.value.id)
+      .eq('id', editingTask.value.id)
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    const taskIndex = tasks.value.findIndex(t => t.id === editingTask.value.id)
     if (taskIndex !== -1) {
-      tasks.value[taskIndex].title = selectedTask.value.title
+      tasks.value[taskIndex].title = editingTask.value.title
+      tasks.value[taskIndex].description = editingTask.value.description
+      tasks.value[taskIndex].column_id = editingTask.value.column_id
+      tasks.value[taskIndex].assignee_id = assigneeId
+      tasks.value[taskIndex].assignee_email = assigneeEmail
+      tasks.value[taskIndex].priority = editingTask.value.priority
+      tasks.value[taskIndex].due_date = editingTask.value.due_date
     }
 
-    showToast('Название задачи обновлено!', 'success')
+    closeEditModal()
+    showToast('Задача успешно обновлена', 'success')
+    
   } catch (error) {
-    showToast('Ошибка при обновлении названия', 'error')
+    let errorMessage = 'Ошибка при обновлении задачи'
+    if (error.message.includes('Только администратор')) {
+      errorMessage = error.message
+    }
+    
+    showToast(errorMessage, 'error')
   } finally {
     updating.value = false
-  }
-}
-
-const updateTaskDescription = async () => {
-  if (!selectedTask.value) return
-  
-  updating.value = true
-  try {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        description: selectedTask.value.description || null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', selectedTask.value.id)
-
-    if (error) {
-      throw error
-    }
-
-    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
-    if (taskIndex !== -1) {
-      tasks.value[taskIndex].description = selectedTask.value.description
-    }
-
-    showToast('Описание задачи обновлено!', 'success')
-  } catch (error) {
-    showToast('Ошибка при обновлении описания', 'error')
-  } finally {
-    updating.value = false
-  }
-}
-
-const updateTaskStatus = async () => {
-  if (!selectedTask.value) return
-  
-  try {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        column_id: selectedTask.value.column_id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', selectedTask.value.id)
-
-    if (error) throw error
-
-    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
-    if (taskIndex !== -1) {
-      tasks.value[taskIndex].column_id = selectedTask.value.column_id
-    }
-
-    showToast('Статус задачи обновлен!', 'success')
-  } catch (error) {
-    showToast('Ошибка при обновлении статуса', 'error')
-  }
-}
-
-const updateTaskAssignee = async () => {
-  if (!selectedTask.value) return
-  
-  try {
-    const assigneeUser = availableUsers.value.find(user => user.email === selectedTask.value.assignee_email)
-    if (!assigneeUser) {
-      showToast('Выбранный исполнитель не найден', 'error')
-      return
-    }
-
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        assignee_id: assigneeUser.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', selectedTask.value.id)
-
-    if (error) throw error
-
-    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
-    if (taskIndex !== -1) {
-      tasks.value[taskIndex].assignee_id = assigneeUser.id
-      tasks.value[taskIndex].assignee_email = assigneeUser.email
-      tasks.value[taskIndex].updated_at = new Date().toISOString()
-    }
-
-    showToast('Исполнитель задачи обновлен!', 'success')
-  } catch (error) {
-    showToast('Ошибка при обновлении исполнителя', 'error')
-  }
-}
-
-const updateTaskPriority = async () => {
-  if (!selectedTask.value) return
-  
-  try {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        priority: selectedTask.value.priority,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', selectedTask.value.id)
-
-    if (error) throw error
-
-    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
-    if (taskIndex !== -1) {
-      tasks.value[taskIndex].priority = selectedTask.value.priority
-    }
-
-    showToast('Приоритет задачи обновлен!', 'success')
-  } catch (error) {
-    showToast('Ошибка при обновлении приоритета', 'error')
-  }
-}
-
-const updateTaskDueDate = async () => {
-  if (!selectedTask.value) return
-  
-  try {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        due_date: selectedTask.value.due_date,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', selectedTask.value.id)
-
-    if (error) throw error
-
-    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
-    if (taskIndex !== -1) {
-      tasks.value[taskIndex].due_date = selectedTask.value.due_date
-    }
-
-    showToast('Срок выполнения обновлен!', 'success')
-  } catch (error) {
-    showToast('Ошибка при обновлении срока', 'error')
   }
 }
 
 const deleteTask = async () => {
-  if (!selectedTask.value) return
+  if (!isAdmin.value) {
+    showToast('Только администратор может удалять задачи', 'error')
+    return
+  }
+
+  if (!editingTask.value.id) return
   
   deleting.value = true
   try {
+    // Сначала удаляем вложения задачи
     await supabase
       .from('attachments')
       .delete()
-      .eq('task_id', selectedTask.value.id)
+      .eq('task_id', editingTask.value.id)
 
+    // Затем удаляем саму задачу
     const { error } = await supabase
       .from('tasks')
       .delete()
-      .eq('id', selectedTask.value.id)
+      .eq('id', editingTask.value.id)
 
     if (error) throw error
 
-    tasks.value = tasks.value.filter(t => t.id !== selectedTask.value.id)
-
-    closeTaskModal()
-    showToast('Задача удалена!', 'success')
+    tasks.value = tasks.value.filter(t => t.id !== editingTask.value.id)
+    
+    closeEditModal()
+    showToast('Задача успешно удалена', 'success')
+    
   } catch (error) {
+    console.error('Ошибка удаления задачи:', error)
     showToast('Ошибка при удалении задачи', 'error')
   } finally {
     deleting.value = false
@@ -933,6 +1056,8 @@ const loadColumns = async () => {
     if (error) throw error
     columns.value = data || []
     
+    console.log('Загруженные колонки:', columns.value)
+    
     if (columns.value.length > 0 && !newTask.value.column_id) {
       newTask.value.column_id = columns.value[0].id
     }
@@ -963,8 +1088,8 @@ const loadTasks = async () => {
         assignee_email: task.assignee?.email,
         creator_email: task.creator?.email
       }))
-      
-      await loadTaskAttachmentsForAllTasks()
+
+      console.log('Загруженные задачи:', tasks.value)
     } else {
       tasks.value = []
     }
@@ -973,209 +1098,11 @@ const loadTasks = async () => {
   }
 }
 
-const loadTaskAttachments = async (taskId) => {
-  try {
-    const { data, error } = await supabase
-      .from('attachments')
-      .select('*')
-      .eq('task_id', taskId)
-      .order('uploaded_at', { ascending: false })
-    
-    if (error) throw error
-    
-    if (selectedTask.value && selectedTask.value.id === taskId) {
-      selectedTask.value.attachments = data || []
-    }
-    
-    return data || []
-  } catch (error) {
-    console.error('Ошибка загрузки вложений:', error)
-    return []
-  }
-}
-
-const loadTaskAttachmentsForAllTasks = async () => {
-  try {
-    if (tasks.value.length === 0) return
-    
-    const taskIds = tasks.value.map(t => t.id)
-    const { data, error } = await supabase
-      .from('attachments')
-      .select('*')
-      .in('task_id', taskIds)
-    
-    if (error) throw error
-    
-    const attachmentsByTask = {}
-    data?.forEach(attachment => {
-      if (!attachmentsByTask[attachment.task_id]) {
-        attachmentsByTask[attachment.task_id] = []
-      }
-      attachmentsByTask[attachment.task_id].push(attachment)
-    })
-    
-    tasks.value.forEach(task => {
-      task.attachments = attachmentsByTask[task.id] || []
-    })
-  } catch (error) {
-    console.error('Ошибка загрузки вложений для всех задач:', error)
-  }
-}
-
-const triggerFileInput = () => {
-  if (!selectedTask.value?.is_completed) {
-    showToast('Файлы можно прикреплять только к выполненным задачам', 'warning')
-    return
-  }
-  fileInput.value?.click()
-}
-
-const handleFileSelect = async (event) => {
-  const files = Array.from(event.target.files)
-  if (files.length === 0) return
-  
-  if (!selectedTask.value?.is_completed) {
-    showToast('Файлы можно прикреплять только к выполненным задачам', 'warning')
-    return
-  }
-  
-  await uploadFiles(files)
-  event.target.value = ''
-}
-
-const handleFileDrop = async (event) => {
-  event.preventDefault()
-  const files = Array.from(event.dataTransfer.files)
-  if (files.length === 0) return
-  
-  if (!selectedTask.value?.is_completed) {
-    showToast('Файлы можно прикреплять только к выполненным задачам', 'warning')
-    return
-  }
-  
-  await uploadFiles(files)
-}
-
-const uploadFiles = async (files) => {
-  if (!selectedTask.value) return
-  
-  uploading.value = true
-  
-  try {
-    for (const file of files) {
-      if (file.size > 50 * 1024 * 1024) {
-        showToast(`Файл "${file.name}" слишком большой (макс. 50MB)`, 'error')
-        continue
-      }
-      
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-      
-      const filePath = `/filesusers/${fileName}`
-      
-      try {
-        const { data: attachmentData, error: attachmentError } = await supabase
-          .from('attachments')
-          .insert({
-            task_id: selectedTask.value.id,
-            filename: file.name,
-            file_path: filePath,
-            file_size: file.size,
-            uploaded_by_id: currentUser.value.id,
-            uploaded_at: new Date().toISOString()
-          })
-          .select()
-          .single()
-        
-        if (attachmentError) {
-          console.error('Ошибка сохранения информации о файле:', attachmentError)
-          showToast(`Ошибка сохранения файла "${file.name}": ${attachmentError.message}`, 'error')
-          continue
-        }
-        
-        if (!selectedTask.value.attachments) {
-          selectedTask.value.attachments = []
-        }
-        selectedTask.value.attachments.push(attachmentData)
-        
-        const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
-        if (taskIndex !== -1) {
-          if (!tasks.value[taskIndex].attachments) {
-            tasks.value[taskIndex].attachments = []
-          }
-          tasks.value[taskIndex].attachments.push(attachmentData)
-        }
-        
-        showToast(`Информация о файле "${file.name}" успешно сохранена`, 'success')
-        
-      } catch (fileError) {
-        console.error('Ошибка сохранения файла:', fileError)
-        showToast(`Ошибка при сохранении файла "${file.name}": ${fileError.message}`, 'error')
-        continue
-      }
-    }
-  } catch (error) {
-    console.error('Общая ошибка при загрузке файлов:', error)
-    showToast('Ошибка при загрузке файлов: ' + error.message, 'error')
-  } finally {
-    uploading.value = false
-  }
-}
-
-const downloadAttachment = async (attachment) => {
-  try {
-    const message = `Файл "${attachment.filename}" был прикреплен к задаче, но не может быть скачан через веб-интерфейс.\n\nИнформация о файле:\n- Название: ${attachment.filename}\n- Размер: ${formatFileSize(attachment.file_size)}\n- Путь: ${attachment.file_path}\n\nДля работы с файлами используйте локальное приложение.`
-    
-    const blob = new Blob([message], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `info-${attachment.filename}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    
-    showToast('Информация о файле скачана', 'info')
-  } catch (error) {
-    console.error('Ошибка скачивания файла:', error)
-    showToast('Ошибка при получении информации о файле', 'error')
-  }
-}
-
-const deleteAttachment = async (attachmentId) => {
-  try {
-    const attachment = selectedTask.value.attachments.find(a => a.id === attachmentId)
-    if (!attachment) return
-    
-    const { error: dbError } = await supabase
-      .from('attachments')
-      .delete()
-      .eq('id', attachmentId)
-    
-    if (dbError) {
-      throw dbError
-    }
-    
-    selectedTask.value.attachments = selectedTask.value.attachments.filter(a => a.id !== attachmentId)
-    
-    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
-    if (taskIndex !== -1) {
-      tasks.value[taskIndex].attachments = tasks.value[taskIndex].attachments.filter(a => a.id !== attachmentId)
-    }
-    
-    showToast('Информация о файле удалена', 'success')
-  } catch (error) {
-    console.error('Ошибка удаления файла:', error)
-    showToast('Ошибка при удалении информации о файле', 'error')
-  }
-}
-
 const loadData = async () => {
   loading.value = true
   try {
     await getCurrentUser()
-    await loadAvailableUsers()
+    await loadBoardMembers()
     await loadBoard()
     await loadColumns()
     await loadTasks()
@@ -1186,6 +1113,8 @@ const loadData = async () => {
     loading.value = false
   }
 }
+
+const toast = ref({ visible: false, type: 'success', message: '' })
 
 watch(columns, () => {
   if (columns.value.length > 0) {

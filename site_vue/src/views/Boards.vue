@@ -272,14 +272,6 @@
                     </div>
                     <div class="boards-member-actions">
                       <button 
-                        v-if="member.role !== 'admin' && canEditAdmin"
-                        class="boards-member-btn boards-member-btn-promote"
-                        @click="promoteEditMemberToAdmin(member.user_id)"
-                        title="Сделать администратором"
-                      >
-                        ⭐
-                      </button>
-                      <button 
                         v-if="canEditAdmin && member.user_id !== currentUserId"
                         class="boards-member-btn boards-member-btn-remove"
                         @click="removeEditMember(member.user_id)"
@@ -648,53 +640,6 @@ const removeEditMember = async (userId) => {
 
 const promoteToAdmin = (index) => {
   showToast('Администратором всегда является создатель проекта', 'info')
-}
-
-const promoteEditMemberToAdmin = async (userId) => {
-  if (!canEditAdmin.value) {
-    showToast('Только администратор может назначать администраторов', 'error')
-    return
-  }
-
-  try {
-    const currentUserId = auth.userId.value
-    const adminMembers = editingBoardMembers.value.filter(m => m.role === 'admin' && m.user_id !== currentUserId)
-    
-    for (const admin of adminMembers) {
-      const { error } = await supabase
-        .from('user_roles')
-        .update({ role_id: roles.value.member })
-        .eq('board_id', editingBoard.value.id)
-        .eq('user_id', admin.user_id)
-
-      if (error) throw error
-    }
-
-    const { error } = await supabase
-      .from('user_roles')
-      .update({ role_id: roles.value.admin })
-      .eq('board_id', editingBoard.value.id)
-      .eq('user_id', userId)
-
-    if (error) throw error
-
-    editingBoardMembers.value.forEach(member => {
-      if (member.role === 'admin' && member.user_id !== currentUserId) {
-        member.role = 'member'
-      }
-      if (member.user_id === userId) {
-        member.role = 'admin'
-      }
-    })
-
-    await loadBoardMembers()
-
-    showToast('Новый администратор назначен', 'success')
-
-  } catch (error) {
-    console.error('Error promoting member:', error)
-    showToast('Ошибка при назначении администратора', 'error')
-  }
 }
 
 const showToast = (message, type = 'success') => {
