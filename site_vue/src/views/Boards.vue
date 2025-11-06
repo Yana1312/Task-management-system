@@ -18,7 +18,12 @@
               >
                 <div class="boards-card-header">
                   <div class="boards-pill">{{ b.title }}</div>
-                  <button class="boards-edit-icon" @click.stop="openEditModal(b)" aria-label="Редактировать">✎</button>
+                  <button 
+                    v-if="canEditBoard(b.id)"
+                    class="boards-edit-icon" 
+                    @click.stop="openEditModal(b)" 
+                    aria-label="Редактировать"
+                  >✎</button>
                 </div>
                 <div class="boards-card-list">
                   <div class="boards-card-item">
@@ -31,6 +36,11 @@
                 </div>
                 <div class="boards-card-footer">
                   <button class="boards-btn boards-btn-secondary" @click.stop="openBoard(b)">Открыть проект</button>
+                  <button 
+                    v-if="canEditBoard(b.id)"
+                    class="boards-btn boards-btn-danger" 
+                    @click.stop="deleteBoard(b)"
+                  >Удалить проект</button>
                 </div>
               </div>
               <div v-if="personalBoards.length === 0" class="boards-empty">Нет личных досок</div>
@@ -50,7 +60,12 @@
               >
                 <div class="boards-card-header">
                   <div class="boards-pill">{{ b.title }}</div>
-                  <button class="boards-edit-icon" @click.stop="openEditModal(b)" aria-label="Редактировать">✎</button>
+                  <button 
+                    v-if="canEditBoard(b.id)"
+                    class="boards-edit-icon" 
+                    @click.stop="openEditModal(b)" 
+                    aria-label="Редактировать"
+                  >✎</button>
                 </div>
                 <div class="boards-card-list">
                   <div class="boards-card-item">
@@ -66,6 +81,11 @@
                 </div>
                 <div class="boards-card-footer">
                   <button class="boards-btn boards-btn-secondary" @click.stop="openBoard(b)">Открыть проект</button>
+                  <button 
+                    v-if="canEditBoard(b.id)"
+                    class="boards-btn boards-btn-danger" 
+                    @click.stop="deleteBoard(b)"
+                  >Удалить проект</button>
                 </div>
               </div>
               <div v-if="teamBoards.length === 0" class="boards-empty">Нет командных досок</div>
@@ -361,6 +381,12 @@ const cardBg = '#B54B11'
 
 const toast = ref({ visible: false, type: 'success', message: '' })
 
+const canEditBoard = (boardId) => {
+  const currentUserId = auth.userId.value
+  const members = boardMembers.value.get(boardId) || []
+  const adminMember = members.find(m => m.user_id === currentUserId && m.role === 'admin')
+  return !!adminMember
+}
 
 const personalBoards = computed(() => {
   const uid = auth.userId.value
@@ -407,6 +433,11 @@ const closeCreateModal = () => {
 }
 
 const openEditModal = async (board) => {
+  if (!canEditBoard(board.id)) {
+    showToast('Только администратор может редактировать проект', 'error')
+    return
+  }
+
   editingBoard.value = {
     id: board.id,
     title: board.title,
@@ -415,7 +446,6 @@ const openEditModal = async (board) => {
     created_at: board.created_at
   }
   
-
   await loadBoardMembersForEdit(board.id)
   showEditModal.value = true
 }
@@ -423,6 +453,35 @@ const openEditModal = async (board) => {
 const closeEditModal = () => { 
   showEditModal.value = false
   editingBoardMembers.value = []
+}
+
+const deleteBoard = async (board) => {
+  if (!canEditBoard(board.id)) {
+    showToast('Только администратор может удалить проект', 'error')
+    return
+  }
+
+  if (!confirm(`Вы уверены, что хотите удалить проект "${board.title}"?`)) {
+    return
+  }
+
+  deleting.value = true
+  try {
+    const { error } = await supabase
+      .from('boards')
+      .delete()
+      .eq('id', board.id)
+
+    if (error) throw error
+
+    boards.value = boards.value.filter(b => b.id !== board.id)
+    showToast('Проект успешно удален', 'success')
+  } catch (error) {
+    console.error('Error deleting board:', error)
+    showToast('Ошибка при удалении проекта', 'error')
+  } finally {
+    deleting.value = false
+  }
 }
 
 async function loadBoardMembersForEdit(boardId) {
@@ -978,5 +1037,14 @@ watch(showCreateModal, async (v) => {
 
 .boards-btn-secondary:hover {
   background: #5a6268;
+}
+
+.boards-btn-danger {
+  background: #dc3545;
+  color: white;
+}
+
+.boards-btn-danger:hover {
+  background: #c82333;
 }
 </style>
