@@ -297,7 +297,7 @@ const loadProjectsWithProgress = async () => {
       // Получаем колонки доски
       const { data: boardColumns, error: columnsError } = await supabase
         .from('columns')
-        .select('id')
+        .select('id, title')
         .eq('board_id', board.id)
 
       if (columnsError) {
@@ -305,7 +305,7 @@ const loadProjectsWithProgress = async () => {
       }
 
       const columnIds = boardColumns?.map(col => col.id) || []
-      console.log('Колонки доски:', columnIds)
+      console.log('Колонки доски:', boardColumns)
 
       // Получаем задачи доски
       let totalTasks = 0
@@ -314,22 +314,39 @@ const loadProjectsWithProgress = async () => {
       if (columnIds.length > 0) {
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
-          .select('id, is_completed, approval_status')
+          .select('id, is_completed, approval_status, column_id')
           .in('column_id', columnIds)
 
         if (tasksError) {
           console.error('Ошибка загрузки задач:', tasksError)
         } else {
           totalTasks = tasksData?.length || 0
-          // Считаем задачу завершенной только если она выполнена И подтверждена
-          completedTasks = tasksData?.filter(task => 
-            task.is_completed && task.approval_status === 'approved'
-          ).length || 0
-          console.log(`Задачи доски ${board.title}: всего ${totalTasks}, выполнено ${completedTasks}`)
+          
+          // НОВАЯ ЛОГИКА: считаем задачу завершенной если она находится в колонке "Готова" или "Выполнено"
+          // или если она помечена как выполненная
+          completedTasks = tasksData?.filter(task => {
+            // Находим колонку задачи
+            const taskColumn = boardColumns?.find(col => col.id === task.column_id)
+            const columnTitle = taskColumn?.title?.toLowerCase() || ''
+            
+            // Задача считается завершенной если:
+            // 1. Она в колонке с названием "готово", "выполнено", "done", "completed" и т.д.
+            // 2. ИЛИ она помечена как is_completed = true
+            return (
+              columnTitle.includes('готов') || 
+              columnTitle.includes('выполн') || 
+              columnTitle.includes('done') || 
+              columnTitle.includes('complete') ||
+              task.is_completed === true
+            )
+          }).length || 0
+          
+          console.log(`Задачи доски ${board.title}:`, tasksData)
+          console.log(`Всего задач: ${totalTasks}, завершено: ${completedTasks}`)
         }
       }
 
-      // Правильный расчет процента завершенности
+      // Правильный расчет процента завершенности: (completedTasks / totalTasks) * 100
       const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
 
       // Получаем информацию об участниках
@@ -739,5 +756,4 @@ onMounted(() => {
   color: rgba(230, 209, 164, 0.8);
   text-align: center;
 }
-
 </style>
