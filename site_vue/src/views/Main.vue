@@ -393,24 +393,6 @@ const openProject = (project) => {
   router.push({ name: 'board', params: { id: project.id } })
 }
 
-<<<<<<< HEAD
-=======
-const loadMoreProjects = () => {
-  // В реальном приложении здесь будет пагинация
-  console.log('Загрузка дополнительных проектов...')
-}
-
-const sortedTasks = computed(() => {
-  return [...tasks.value].sort((a, b) => {
-    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 }
-    const priorityA = priorityOrder[a.priority] || 4
-    const priorityB = priorityOrder[b.priority] || 4
-    
-    return priorityA - priorityB
-  })
-})
-
->>>>>>> 26405cd2bd59f2cc0c19e68d8258faae8379cf85
 const loadTasks = async () => {
   loading.value = true
   try {
@@ -457,7 +439,6 @@ const loadTasks = async () => {
   }
 }
 
-<<<<<<< HEAD
 const toggleTask = async (task) => {
   try {
     const { error } = await supabase
@@ -480,26 +461,6 @@ const toggleTask = async (task) => {
   } catch (error) {
     console.error('Ошибка обновления задачи:', error)
   }
-=======
-const getCurrentUserId = async () => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.user?.id || null
-  } catch (error) {
-    console.error('Ошибка получения пользователя:', error)
-    return null
-  }
-}
-
-const isTaskUrgent = (dueDate) => {
-  if (!dueDate) return false
-  const now = new Date()
-  const due = new Date(dueDate)
-  const diffTime = due.getTime() - now.getTime()
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  return diffDays <= 3
-
->>>>>>> 26405cd2bd59f2cc0c19e68d8258faae8379cf85
 }
 
 const getDueDateClass = (dueDate) => {
