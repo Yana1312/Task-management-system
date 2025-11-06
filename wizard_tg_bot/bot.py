@@ -1,5 +1,7 @@
 import os
 from datetime import datetime, timezone
+import asyncio
+import httpx
 from typing import List, Dict, Any
 
 from dotenv import load_dotenv
@@ -122,7 +124,6 @@ async def delete_messages_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int,
         try:
             await context.bot.deleteMessage(chat_id=chat_id, message_id=mid)
         except Exception:
-            # Игнорируем ошибки удаления (например, слишком старое сообщение)
             pass
 
 
@@ -167,15 +168,18 @@ def build_profile_text(info: Dict[str, Any], tg_name: str) -> str:
 
 
 def get_user_stats(user_id: str) -> Dict[str, Any]:
-    boards = get_accessible_boards(user_id)
-    board_ids = [b.get("id") for b in boards if b.get("id")]
-    # Собираем все колонки доступных досок
-    columns_res = supabase.table("columns").select("id, board_id").in_("board_id", board_ids or ["_none_"]).execute()
-    columns = columns_res.data or []
-    column_ids = [c.get("id") for c in columns if c.get("id")]
-    # Собираем задачи этих колонок
-    tasks_res = supabase.table("tasks").select("id, title, is_completed, priority, due_date, assignee_id, creator_id, created_at, updated_at").in_("column_id", column_ids or ["_none_"]).execute()
-    tasks = tasks_res.data or []
+    try:
+        boards = get_accessible_boards(user_id)
+        board_ids = [b.get("id") for b in boards if b.get("id")]
+        columns_res = supabase.table("columns").select("id, board_id").in_("board_id", board_ids or ["_none_"]).execute()
+        columns = columns_res.data or []
+        column_ids = [c.get("id") for c in columns if c.get("id")]
+        tasks_res = supabase.table("tasks").select("id, title, is_completed, priority, due_date, assignee_id, creator_id, created_at, updated_at").in_("column_id", column_ids or ["_none_"]).execute()
+        tasks = tasks_res.data or []
+    except httpx.ReadTimeout:
+        return {"error": "timeout"}
+    except Exception as e:
+        return {"error": str(e)}
 
     total_tasks = len(tasks)
     assigned = [t for t in tasks if t.get("assignee_id") == user_id]
@@ -183,7 +187,6 @@ def get_user_stats(user_id: str) -> Dict[str, Any]:
     done_assigned = [t for t in assigned if t.get("is_completed")]
     progress_assigned = [t for t in assigned if not t.get("is_completed")]
 
-    # Подсчет по приоритетам (по назначенным)
     pr_counts: Dict[str, int] = {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "URGENT": 0}
     for t in assigned:
         pr = str(t.get("priority") or "").upper()
@@ -192,16 +195,18 @@ def get_user_stats(user_id: str) -> Dict[str, Any]:
         else:
             pr_counts[pr] = pr_counts.get(pr, 0) + 1
 
-    # Сроки
     def parse_iso(dt: Any):
         if not dt:
             return None
         try:
-            return datetime.fromisoformat(str(dt).replace("Z", "+00:00"))
+            s = str(dt)
+            d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            return d.astimezone(timezone.utc)
         except Exception:
             return None
 
-    # Используем timezone-aware время в UTC
     now = datetime.now(timezone.utc)
     upcoming = []
     overdue_count = 0
@@ -215,10 +220,9 @@ def get_user_stats(user_id: str) -> Dict[str, Any]:
             overdue_count += 1
         else:
             upcoming.append({"title": t.get("title"), "due": due})
-    upcoming.sort(key=lambda x: x["due"])  # ближайшие сроки
+    upcoming.sort(key=lambda x: x["due"])
     upcoming_top = upcoming[:3]
 
-    # Средний возраст открытых задач (в днях)
     ages = []
     for t in progress_assigned:
         c = parse_iso(t.get("created_at"))
@@ -266,24 +270,29 @@ def find_user_by_tg_username(tg_username: str) -> Dict[str, Any] | None:
         '@' + norm,
         norm,
     })
-    res = supabase.table("users").select("id, username, email, tg_username").in_("tg_username", candidates).limit(1).execute()
-    data = res.data or []
+    try:
+        res = supabase.table("users").select("id, username, email, tg_username").in_("tg_username", candidates).limit(1).execute()
+        data = res.data or []
+    except Exception:
+        data = []
     return data[0] if data else None
 
 
 def get_accessible_boards(user_id: str) -> List[Dict[str, Any]]:
     boards_map: Dict[str, Dict[str, Any]] = {}
-
-    created = supabase.table("boards").select("id, title").eq("creator_id", user_id).execute()
-    for b in (created.data or []):
-        boards_map[b["id"]] = b
-
-    roles = supabase.table("user_roles").select("board_id").eq("user_id", user_id).execute()
-    role_ids = list({r["board_id"] for r in (roles.data or []) if r.get("board_id")})
-    if role_ids:
-        role_boards = supabase.table("boards").select("id, title").in_("id", role_ids).execute()
-        for b in (role_boards.data or []):
+    try:
+        created = supabase.table("boards").select("id, title").eq("creator_id", user_id).execute()
+        for b in (created.data or []):
             boards_map[b["id"]] = b
+
+        roles = supabase.table("user_roles").select("board_id").eq("user_id", user_id).execute()
+        role_ids = list({r["board_id"] for r in (roles.data or []) if r.get("board_id")})
+        if role_ids:
+            role_boards = supabase.table("boards").select("id, title").in_("id", role_ids).execute()
+            for b in (role_boards.data or []):
+                boards_map[b["id"]] = b
+    except Exception:
+        return []
 
     return list(boards_map.values())
 
@@ -354,7 +363,6 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     res = supabase.table("users").select("id, created_at, username, email, avatar_url, tg_username").eq("id", user["id"]).limit(1).execute()
     info = (res.data or [user])[0]
     text = build_profile_text(info, tg_name)
-    # Кнопка статистики как inline-клавиатура
     ikb = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Статистика", callback_data="user_stats")]])
     await context.bot.sendMessage(chat_id, text, reply_markup=ikb, parse_mode=ParseMode.MARKDOWN_V2)
 
@@ -373,32 +381,42 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data or ""
     if data.startswith("board:"):
         board_id = data.split(":", 1)[1]
+        prev_prompt_id = context.user_data.get("last_columns_prompt_id")
+        if prev_prompt_id:
+            try:
+                await delete_messages_safe(context, chat_id, [prev_prompt_id])
+            except Exception:
+                pass
+
         cols = get_columns(board_id)
         if not cols:
-            await context.bot.sendMessage(chat_id, "В этой доске пока нет колонок.")
+            msg = await context.bot.sendMessage(chat_id, "В этой доске пока нет колонок.")
+            try:
+                context.user_data["last_columns_prompt_id"] = msg.message_id
+            except Exception:
+                pass
             return
         keyboard = [[InlineKeyboardButton(first_upper(c.get("title") or ""), callback_data=f"column:{c['id']}")] for c in cols]
-        await context.bot.sendMessage(chat_id, "Выберите колонку:", reply_markup=InlineKeyboardMarkup(keyboard))
+        msg = await context.bot.sendMessage(chat_id, "Выберите колонку:", reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            context.user_data["last_columns_prompt_id"] = msg.message_id
+        except Exception:
+            pass
         return
 
     if data.startswith("column:"):
         column_id = data.split(":", 1)[1]
         tasks = get_tasks(column_id)
-        # Формируем текст: список задач или заглушку при отсутствии задач
         if tasks:
             text = "\n\n".join(format_task(t) for t in tasks)
         else:
             text = escape_md("В этой колонке пока нет задач.")
 
-        # Подготовить чанки для отправки/редактирования
         chunks = chunk_text(text)
 
-        # Удалить или отредактировать предыдущее сообщение со списком задач
-        # Используем user_data для хранения id предыдущих сообщений
         prev_ids = (context.user_data.get("last_tasks_message_ids") or [])
 
         if prev_ids and len(prev_ids) == 1 and len(chunks) == 1:
-            # Пытаемся отредактировать предыдущее сообщение
             try:
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
@@ -409,37 +427,45 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data["last_tasks_message_ids"] = prev_ids
                 return
             except Exception:
-                # Если редактирование не удалось, удаляем и отправляем заново
                 await delete_messages_safe(context, chat_id, prev_ids)
                 new_ids = await send_chunks(context, chat_id, chunks)
                 context.user_data["last_tasks_message_ids"] = new_ids
                 return
         else:
-            # Удаляем предыдущие и отправляем новые сообщения
             await delete_messages_safe(context, chat_id, prev_ids)
             new_ids = await send_chunks(context, chat_id, chunks)
             context.user_data["last_tasks_message_ids"] = new_ids
         return
 
     if data == "user_stats":
-        # Показ статистики пользователя (редактируем сообщение профиля)
-        stats = get_user_stats(user["id"])
-        stats_text = format_stats_text(stats)
-        back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад к профилю", callback_data="back_profile")]])
+        if context.user_data.get("busy_stats"):
+            await context.bot.sendMessage(chat_id, "Пожалуйста, подождите — идёт загрузка статистики…")
+            return
+        context.user_data["busy_stats"] = True
         try:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=query.message.message_id,
-                text=stats_text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=back_kb,
-            )
-        except Exception:
-            await context.bot.sendMessage(chat_id, stats_text, reply_markup=back_kb, parse_mode=ParseMode.MARKDOWN_V2)
+            stats = await asyncio.to_thread(get_user_stats, user["id"])
+            if isinstance(stats, dict) and stats.get("error"):
+                msg = "Сервис данных недоступен (таймаут). Попробуйте позже." if stats["error"] == "timeout" else "Не удалось получить статистику. Попробуйте позже."
+                back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад к профилю", callback_data="back_profile")]])
+                await context.bot.sendMessage(chat_id, msg, reply_markup=back_kb)
+                return
+            stats_text = format_stats_text(stats)
+            back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад к профилю", callback_data="back_profile")]])
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=query.message.message_id,
+                    text=stats_text,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                    reply_markup=back_kb,
+                )
+            except Exception:
+                await context.bot.sendMessage(chat_id, stats_text, reply_markup=back_kb, parse_mode=ParseMode.MARKDOWN_V2)
+        finally:
+            context.user_data["busy_stats"] = False
         return
 
     if data == "back_profile":
-        # Возврат к профилю
         res = supabase.table("users").select("id, created_at, username, email, avatar_url, tg_username").eq("id", user["id"]).limit(1).execute()
         info = (res.data or [user])[0]
         text = build_profile_text(info, tg_name)
@@ -465,6 +491,19 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^Профиль$"), cmd_profile))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^Доски$"), cmd_boards))
     app.add_handler(CallbackQueryHandler(on_callback))
+    async def on_error(update_obj: object, context_obj: ContextTypes.DEFAULT_TYPE):
+        try:
+            print("[ERROR] Unhandled exception:", context_obj.error)
+            chat_id_local = None
+            if hasattr(update_obj, "effective_chat") and update_obj.effective_chat:
+                chat_id_local = update_obj.effective_chat.id
+            elif hasattr(update_obj, "callback_query") and update_obj.callback_query and update_obj.callback_query.message:
+                chat_id_local = update_obj.callback_query.message.chat.id
+            if chat_id_local:
+                await app.bot.sendMessage(chat_id_local, "Произошла ошибка. Пожалуйста, повторите попытку позже.")
+        except Exception:
+            pass
+    app.add_error_handler(on_error)
     print("[БОТ] Telegram-бот запущен. Ожидаю обновления…")
     app.run_polling()
 
