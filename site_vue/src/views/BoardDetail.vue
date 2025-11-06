@@ -65,7 +65,6 @@
       <button class="boards-create-btn" @click="openModal" aria-label="Создать задачу">+</button>
     </div>
 
-
     <div v-if="showModal" class="boards-modal-overlay" @click="closeModal">
       <div class="boards-modal boards-modal-large" @click.stop>
         <div class="boards-modal-header">
@@ -76,7 +75,7 @@
         <div class="boards-modal-body">
           <div class="boards-modal-section">
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Название задачи</label>
+              <label class="boards-modal-label">Название задачи *</label>
               <input 
                 v-model="newTask.title" 
                 class="boards-modal-input" 
@@ -94,7 +93,7 @@
             </div>
 
             <div class="boards-modal-field">
-              <label class="boards-modal-label">Колонка</label>
+              <label class="boards-modal-label">Колонка *</label>
               <select v-model="newTask.column_id" class="boards-modal-input">
                 <option v-for="col in columns" :key="col.id" :value="col.id">
                   {{ col.title }}
@@ -102,17 +101,29 @@
               </select>
             </div>
 
-            <div class="boards-modal-field">
-              <label class="boards-modal-label">Исполнитель задачи</label>
+            <!-- Поле исполнителя с условием -->
+            <div class="boards-modal-field" v-if="isTeamProject">
+              <label class="boards-modal-label">Исполнитель задачи *</label>
               <select v-model="newTask.assignee_email" class="boards-modal-input" required>
                 <option value="">Выберите исполнителя</option>
-                <option v-for="user in availableUsers" :key="user.id" :value="user.email">
+                <option v-for="user in boardMembers" :key="user.id" :value="user.email">
                   {{ user.email }}
                 </option>
               </select>
               <div class="boards-modal-hint">
                 Основной исполнитель задачи
               </div>
+            </div>
+
+            <div class="boards-modal-field" v-else>
+              <label class="boards-modal-label">Исполнитель задачи</label>
+              <div class="fixed-assignee">
+                {{ currentUser?.email }} (Вы)
+              </div>
+              <div class="boards-modal-hint">
+                В личном проекте исполнителем всегда являетесь вы
+              </div>
+              <input type="hidden" v-model="newTask.assignee_email" />
             </div>
 
             <div class="boards-modal-field">
@@ -147,14 +158,13 @@
           <button 
             class="boards-modal-btn boards-modal-btn-create" 
             @click="createTask"
-            :disabled="!newTask.title.trim() || !newTask.assignee_email || creating"
+            :disabled="!newTask.title.trim() || !newTask.column_id || creating || (isTeamProject && !newTask.assignee_email)"
           >
             {{ creating ? 'Создание...' : 'Создать задачу' }}
           </button>
         </div>
       </div>
     </div>
-
 
     <div v-if="showTaskModal" class="boards-modal-overlay" @click="closeTaskModal">
       <div class="boards-modal boards-modal-large" @click.stop>
@@ -223,20 +233,31 @@
               </select>
             </div>
 
-            <div class="boards-modal-field">
+            <!-- Поле исполнителя в редактировании с условием -->
+            <div class="boards-modal-field" v-if="isTeamProject">
               <label class="boards-modal-label">Исполнитель задачи</label>
               <select 
                 v-model="selectedTask.assignee_email" 
                 class="boards-modal-input"
                 @change="updateTaskAssignee"
               >
-                <option value="">Выберите исполнителя</option>
-                <option v-for="user in availableUsers" :key="user.id" :value="user.email">
+                
+                <option v-for="user in boardMembers" :key="user.id" :value="user.email">
                   {{ user.email }}
                 </option>
               </select>
               <div class="boards-modal-hint">
                 Текущий исполнитель: {{ selectedTask.assignee_email || 'Не назначен' }}
+              </div>
+            </div>
+
+            <div class="boards-modal-field" v-else>
+              <label class="boards-modal-label">Исполнитель задачи</label>
+              <div class="fixed-assignee">
+                {{ currentUser?.email }} (Вы)
+              </div>
+              <div class="boards-modal-hint">
+                В личном проекте исполнителем всегда являетесь вы
               </div>
             </div>
 
@@ -376,7 +397,7 @@ const boardId = ref(route.params.id)
 const board = ref(null)
 const columns = ref([])
 const tasks = ref([])
-const availableUsers = ref([])
+const boardMembers = ref([]) // Участники проекта
 const loading = ref(true)
 const currentUser = ref(null)
 
@@ -404,6 +425,11 @@ let descriptionUpdateTimeout = null
 
 const toast = ref({ visible: false, type: 'success', message: '' })
 
+// Вычисляемое свойство для определения типа проекта
+const isTeamProject = computed(() => {
+  return boardMembers.value.length > 1
+})
+
 const tasksByColumn = computed(() => {
   const grouped = {}
   columns.value.forEach(col => {
@@ -429,6 +455,7 @@ const getCurrentUser = async () => {
     if (user) {
       currentUser.value = user
       
+      // Проверяем существование пользователя в таблице users
       const { data: userData, error } = await supabase
         .from('users')
         .select('id')
@@ -436,6 +463,7 @@ const getCurrentUser = async () => {
         .single()
       
       if (error) {
+        // Создаем пользователя если не существует
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({
@@ -454,18 +482,27 @@ const getCurrentUser = async () => {
   }
 }
 
-const loadAvailableUsers = async () => {
+// Загрузка участников проекта
+const loadBoardMembers = async () => {
   try {
     const { data, error } = await supabase
-      .from('users')
-      .select('id, email')
-      .order('email', { ascending: true })
-    
+      .from('user_roles')
+      .select(`
+        user_id,
+        users:user_id (email, id)
+      `)
+      .eq('board_id', boardId.value)
+
     if (error) throw error
-    availableUsers.value = data || []
+    
+    boardMembers.value = data?.map(item => ({
+      id: item.user_id,
+      email: item.users?.email
+    })) || []
+    
   } catch (error) {
-    console.error('Ошибка загрузки пользователей:', error)
-    availableUsers.value = []
+    console.error('Ошибка загрузки участников проекта:', error)
+    boardMembers.value = []
   }
 }
 
@@ -538,6 +575,11 @@ const openModal = () => {
   showModal.value = true
   if (columns.value.length > 0 && !newTask.value.column_id) {
     newTask.value.column_id = columns.value[0].id
+  }
+  
+  // Автоматически назначаем текущего пользователя для личных проектов
+  if (!isTeamProject.value && currentUser.value) {
+    newTask.value.assignee_email = currentUser.value.email
   }
 }
 
@@ -630,21 +672,30 @@ const toggleSelectedTaskStatus = async () => {
 }
 
 const createTask = async () => {
-  if (!newTask.value.title.trim() || !newTask.value.assignee_email) return
+  if (!newTask.value.title.trim() || !newTask.value.column_id) return
   
   creating.value = true
   try {
-    if (!newTask.value.column_id) {
-      throw new Error('Не выбрана колонка для задачи')
-    }
-
     if (!currentUser.value) {
       throw new Error('Пользователь не авторизован')
     }
 
-    const assigneeUser = availableUsers.value.find(user => user.email === newTask.value.assignee_email)
-    if (!assigneeUser) {
-      throw new Error('Выбранный исполнитель не найден')
+    // Определяем исполнителя в зависимости от типа проекта
+    let assigneeId = currentUser.value.id
+    let assigneeEmail = currentUser.value.email
+
+    // Для командных проектов проверяем выбранного исполнителя
+    if (isTeamProject.value) {
+      if (!newTask.value.assignee_email) {
+        throw new Error('Не выбран исполнитель задачи')
+      }
+
+      const assigneeUser = boardMembers.value.find(user => user.email === newTask.value.assignee_email)
+      if (!assigneeUser) {
+        throw new Error('Выбранный исполнитель не найден в проекте')
+      }
+      assigneeId = assigneeUser.id
+      assigneeEmail = assigneeUser.email
     }
 
     const taskData = {
@@ -653,7 +704,7 @@ const createTask = async () => {
       column_id: newTask.value.column_id,
       position: tasks.value.length,
       creator_id: currentUser.value.id,
-      assignee_id: assigneeUser.id,
+      assignee_id: assigneeId,
       priority: newTask.value.priority || 'medium',
       due_date: newTask.value.due_date || null,
       is_completed: false,
@@ -676,14 +727,14 @@ const createTask = async () => {
 
     const updatedTask = {
       ...taskDataResult,
-      assignee_email: taskDataResult.assignee?.email,
+      assignee_email: assigneeEmail,
       creator_email: taskDataResult.creator?.email
     }
 
     tasks.value.push(updatedTask)
     
     closeModal()
-    showToast('Задача успешно создана для исполнителя', 'success')
+    showToast('Задача успешно создана', 'success')
     
   } catch (error) {
     let errorMessage = 'Ошибка при создании задачи'
@@ -693,8 +744,10 @@ const createTask = async () => {
       errorMessage = 'Выберите колонку для задачи'
     } else if (error.message.includes('Пользователь не авторизован')) {
       errorMessage = 'Вы не авторизованы'
+    } else if (error.message.includes('Не выбран исполнитель')) {
+      errorMessage = 'Выберите исполнителя задачи'
     } else if (error.message.includes('Выбранный исполнитель не найден')) {
-      errorMessage = 'Выбранный исполнитель не найден в системе'
+      errorMessage = 'Выбранный исполнитель не найден в проекте'
     }
     
     showToast(errorMessage, 'error')
@@ -795,9 +848,15 @@ const updateTaskAssignee = async () => {
   if (!selectedTask.value) return
   
   try {
-    const assigneeUser = availableUsers.value.find(user => user.email === selectedTask.value.assignee_email)
+    // Для личных проектов не обновляем исполнителя
+    if (!isTeamProject.value) {
+      showToast('В личном проекте исполнителем всегда являетесь вы', 'info')
+      return
+    }
+
+    const assigneeUser = boardMembers.value.find(user => user.email === selectedTask.value.assignee_email)
     if (!assigneeUser) {
-      showToast('Выбранный исполнитель не найден', 'error')
+      showToast('Выбранный исполнитель не найден в проекте', 'error')
       return
     }
 
@@ -1175,7 +1234,7 @@ const loadData = async () => {
   loading.value = true
   try {
     await getCurrentUser()
-    await loadAvailableUsers()
+    await loadBoardMembers() // Загружаем участников проекта
     await loadBoard()
     await loadColumns()
     await loadTasks()
@@ -1647,10 +1706,21 @@ onMounted(() => {
   font-family: inherit;
 }
 
+.fixed-assignee {
+  padding: 10px 12px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .boards-modal-hint {
   font-size: 12px;
   color: #6b7280;
   margin-top: 4px;
+  font-style: italic;
 }
 
 .boards-modal-hint .due-date-overdue {
@@ -1868,6 +1938,10 @@ onMounted(() => {
 
 .toast-warning {
   background: #f59e0b;
+}
+
+.toast-info {
+  background: #3b82f6;
 }
 
 @keyframes slideIn {
