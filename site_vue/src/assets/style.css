@@ -2627,3 +2627,209 @@ input[type="checkbox"]:checked + label {
         opacity: 1;
     }
 }
+/* Стили для системы подтверждения задач */
+.task-completed {
+  background: #f0f9ff !important;
+  border-color: #bae6fd !important;
+}
+
+
+.task-rejected {
+  background: #fef2f2 !important;
+  border-color: #fecaca !important;
+}
+
+.user-status-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.status-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.move-to-work {
+  background: #3b82f6;
+  color: white;
+}
+
+.move-to-work:hover {
+  background: #2563eb;
+}
+
+.move-to-done {
+  background: #10b981;
+  color: white;
+}
+
+.move-to-done:hover {
+  background: #059669;
+}
+
+.approval-status {
+  font-size: 0.8em;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-rejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.admin-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.approve-btn {
+  background: #10b981;
+  color: white;
+}
+
+.approve-btn:hover {
+  background: #059669;
+}
+
+.reject-btn {
+  background: #ef4444;
+  color: white;
+}
+
+.reject-btn:hover {
+  background: #dc2626;
+}
+
+.admin-comment {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 8px 0;
+  font-size: 0.9em;
+  color: #92400e;
+}
+
+.admin-comment strong {
+  color: #78350f;
+}
+
+.edit-badge {
+  background: #8b5cf6;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.edit-badge:hover {
+  background: #7c3aed;
+}
+
+/* Стили для прогресса проектов */
+.project-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 120px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(72, 9, 2, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.progress-high {
+  background: #10b981;
+}
+
+.progress-medium {
+  background: #f59e0b;
+}
+
+.progress-low {
+  background: #ef4444;
+}
+
+.project-progress-info {
+  margin-bottom: 15px;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 0.9em;
+  color: #E6D1A4;
+}
+
+.progress-percentage {
+  font-weight: bold;
+  color: #CE7939;
+}
+
+.progress-bar-mini {
+  height: 6px;
+  background: rgba(72, 9, 2, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill-mini {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.approval-badge {
+  font-size: 0.7em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.approval-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.approval-badge.rejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
