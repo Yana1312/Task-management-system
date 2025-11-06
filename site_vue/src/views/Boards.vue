@@ -461,12 +461,61 @@ const deleteBoard = async (board) => {
     return
   }
 
-  if (!confirm(`Вы уверены, что хотите удалить проект "${board.title}"?`)) {
+  if (!confirm(`Вы уверены, что хотите удалить проект "${board.title}"? Это действие нельзя отменить.`)) {
     return
   }
 
   deleting.value = true
   try {
+    const { data: columns, error: columnsError } = await supabase
+      .from('columns')
+      .select('id')
+      .eq('board_id', board.id)
+
+    if (columnsError) throw columnsError
+
+    if (columns && columns.length > 0) {
+      const columnIds = columns.map(column => column.id)
+
+      const { data: tasks, error: tasksError } = await supabase
+        .from('tasks')
+        .select('id')
+        .in('column_id', columnIds)
+
+      if (tasksError) throw tasksError
+
+      if (tasks && tasks.length > 0) {
+        const taskIds = tasks.map(task => task.id)
+        const { error: attachmentsError } = await supabase
+          .from('attachments')
+          .delete()
+          .in('task_id', taskIds)
+
+        if (attachmentsError) throw attachmentsError
+      }
+
+      const { error: deleteTasksError } = await supabase
+        .from('tasks')
+        .delete()
+        .in('column_id', columnIds)
+
+      if (deleteTasksError) throw deleteTasksError
+    }
+
+    const { error: deleteColumnsError } = await supabase
+      .from('columns')
+      .delete()
+      .eq('board_id', board.id)
+
+    if (deleteColumnsError) throw deleteColumnsError
+
+    const { error: membersError } = await supabase
+      .from('user_roles')
+      .delete()
+      .eq('board_id', board.id)
+
+    if (membersError) throw membersError
+
     const { error } = await supabase
       .from('boards')
       .delete()
