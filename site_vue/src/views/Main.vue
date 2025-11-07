@@ -128,23 +128,30 @@
       <div class="section" style="margin-bottom: 10px;">
         <div class="section-header">
           <p>Мои задачи</p>
-          <span class="tasks-count" v-if="filteredTasks.length > 0">{{ filteredTasks.length }}</span>
+          <span class="tasks-count" v-if="tasks.length > 0">{{ tasks.length }}</span>
         </div>
         <div class="section-section tasks-container">
           <div v-if="loading" class="loading-tasks">Загрузка задач...</div>
-          <div v-else-if="filteredTasks.length === 0" class="no-tasks">
+          <div v-else-if="tasks.length === 0" class="no-tasks">
             Нет активных задач
           </div>
           <div v-else class="tasks-scrollable">
             <div 
-              v-for="task in filteredTasks" 
+              v-for="task in tasks" 
               :key="task.id" 
               class="task-item"
               :class="{ 
-                completed: task.is_completed && task.approval_status === 'approved',
-                rejected: task.approval_status === 'rejected'
+                completed: task.is_completed,
+                urgent: isTaskUrgent(task.due_date),
+                'high-priority': task.priority === 'high'
               }"
             >
+              <input 
+                type="checkbox" 
+                :id="'task' + task.id"
+                :checked="task.is_completed"
+                @change="toggleTask(task)"
+              >
               <label :for="'task' + task.id">
                 <span class="task-title">{{ task.title }}</span>
                 <div class="task-meta">
@@ -153,9 +160,6 @@
                   </span>
                   <span v-if="task.priority" class="priority-badge" :class="task.priority">
                     {{ getPriorityLabel(task.priority) }}
-                  </span>
-                  <span v-if="task.approval_status === 'rejected'" class="approval-badge rejected">
-                    ❌ Требует доработки
                   </span>
                 </div>
                 <div class="task-project" v-if="getProjectInfo(task)">
@@ -455,27 +459,23 @@ const openProject = (project) => {
   router.push({ name: 'board', params: { id: project.id } })
 }
 
+// === ФУНКЦИИ ИЗ ВЕРСИИ ДРУГОГО СОТРУДНИКА ДЛЯ "МОИХ ЗАДАЧ" ===
+
 const loadTasks = async () => {
-  loading.value = true
+  const userId = await getCurrentUserId()
+  if (!userId) {
+    loading.value = false
+    return
+  }
+
   try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      console.error('Ошибка аутентификации при загрузке задач:', authError)
-      loading.value = false
-      return
-    }
-
-    const userId = user.id
-
-    // Получаем ВСЕ задачи пользователя (и выполненные и не выполненные)
     const { data, error } = await supabase
       .from('tasks')
       .select(`
         *,
-        columns!inner (
-          id,
+        columns:column_id (
           title,
-          boards!inner (
+          boards:board_id (
             id,
             title,
             background,
@@ -484,21 +484,58 @@ const loadTasks = async () => {
         )
       `)
       .or(`creator_id.eq.${userId},assignee_id.eq.${userId}`)
+      .eq('is_completed', false) 
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Ошибка загрузки задач:', error)
-      tasks.value = []
-    } else {
-      tasks.value = data || []
-      console.log('✅ Задачи загружены:', tasks.value.length)
-    }
+    if (error) throw error
+    tasks.value = data || []
   } catch (error) {
-    console.error('Общая ошибка загрузки задач:', error)
+    console.error('Ошибка загрузки задач:', error)
     tasks.value = []
   } finally {
     loading.value = false
   }
+}
+
+const getCurrentUserId = async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.user?.id || null
+  } catch (error) {
+    console.error('Ошибка получения пользователя:', error)
+    return null
+  }
+}
+
+const toggleTask = async (task) => {
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        is_completed: !task.is_completed,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', task.id)
+
+    if (error) throw error
+    
+    task.is_completed = !task.is_completed
+    
+    if (task.is_completed) {
+      tasks.value = tasks.value.filter(t => t.id !== task.id)
+    }
+  } catch (error) {
+    console.error('Ошибка обновления задачи:', error)
+  }
+}
+
+const isTaskUrgent = (dueDate) => {
+  if (!dueDate) return false
+  const now = new Date()
+  const due = new Date(dueDate)
+  const diffTime = due.getTime() - now.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays <= 3
 }
 
 const getDueDateClass = (dueDate) => {
@@ -788,167 +825,174 @@ onMounted(() => {
   text-align: center;
 }
 
-/* Стили для задач */
+/* === СТИЛИ ДЛЯ ЗАДАЧ ИЗ ВЕРСИИ ДРУГОГО СОТРУДНИКА === */
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
 }
 
 .tasks-count {
   background: #B54B11;
-  color: #E6D1A4;
+  color: white;
   border-radius: 50%;
-  width: 25px;
-  height: 25px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8em;
+  font-size: 0.5em;
   font-weight: bold;
 }
 
 .tasks-container {
-  max-height: 300px;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 300px; 
 }
 
 .tasks-scrollable {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.tasks-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tasks-scrollable::-webkit-scrollbar-track {
+  background: rgba(181, 75, 17, 0.1);
+  border-radius: 3px;
+}
+
+.tasks-scrollable::-webkit-scrollbar-thumb {
+  background: #CE7939;
+  border-radius: 3px;
+}
+
+.tasks-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #B54B11;
 }
 
 .task-item {
   display: flex;
   align-items: flex-start;
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  margin-bottom: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  color: #480902;
+  background: #E6D1A4;
+  border-left: 3px solid #B54B11;
   transition: all 0.2s ease;
 }
 
-.task-item:hover {
-  border-color: #B54B11;
-}
-
-.task-item.completed {
-  background: #f0f9ff;
-  border-color: #bae6fd;
-  opacity: 0.8;
-}
-
-.task-item.rejected {
-  background: #fef2f2;
-  border-color: #fecaca;
+.task-item input[type="checkbox"] {
+  margin-right: 8px;
+  margin-top: 2px;
 }
 
 .task-item label {
+  margin: 0;
+  font-size: 0.9em;
   flex: 1;
-  cursor: pointer;
 }
 
 .task-title {
-  font-weight: 500;
-  color: #374151;
   display: block;
-  margin-bottom: 6px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  word-break: break-word;
 }
 
 .task-meta {
   display: flex;
+  gap: 8px;
+  font-size: 0.75em;
+  margin-bottom: 4px;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
 }
 
 .task-due-date {
-  font-size: 0.8em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
+  font-size: 0.75em;
+  padding: 1px 4px;
+  border-radius: 2px;
 }
 
 .task-due-date.overdue {
-  background: #fee2e2;
-  color: #dc2626;
+  background: #ff4444;
+  color: white;
+  font-weight: bold;
 }
 
 .task-due-date.today {
-  background: #fed7aa;
-  color: #c2410c;
+  background: #ff6b35;
+  color: white;
+  font-weight: bold;
 }
 
 .task-due-date.urgent {
-  background: #fef3c7;
-  color: #92400e;
+  background: #ffaa00;
+  color: black;
+  font-weight: bold;
 }
 
 .priority-badge {
+  padding: 1px 4px;
+  border-radius: 2px;
   font-size: 0.7em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.priority-badge.low {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.priority-badge.medium {
-  background: #fef3c7;
-  color: #92400e;
+  font-weight: bold;
 }
 
 .priority-badge.high {
-  background: #fee2e2;
-  color: #991b1b;
+  background: #ff4444;
+  color: white;
+}
+
+.priority-badge.medium {
+  background: #ffaa00;
+  color: black;
+}
+
+.priority-badge.low {
+  background: #44ff44;
+  color: black;
 }
 
 .priority-badge.critical {
-  background: #fecaca;
-  color: #7f1d1d;
-}
-
-.approval-badge {
-  font-size: 0.7em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.approval-badge.rejected {
-  background: #fee2e2;
-  color: #dc2626;
+  background: #ff00ff;
+  color: white;
 }
 
 .task-project {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .project-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
   font-size: 0.7em;
-  padding: 2px 8px;
-  border-radius: 12px;
   color: white;
   font-weight: 500;
+  background: #B54B11;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.loading-tasks {
+.loading-tasks, .no-tasks {
   text-align: center;
-  padding: 20px;
-  color: #6b7280;
-}
-
-.no-tasks {
-  text-align: center;
-  padding: 30px;
-  color: #9ca3af;
+  color: #E6D1A4;
   font-style: italic;
+  padding: 10px;
+  font-size: 0.9em;
+}
+
+.task-item label {
+  word-break: break-word;
 }
 
 .loading {

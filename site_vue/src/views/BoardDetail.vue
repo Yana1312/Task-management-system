@@ -88,6 +88,7 @@
                   {{ formatDueDate(t.due_date) }}
                 </div>
                 
+                <!-- Отображение вложений в карточке задачи -->
                 <div v-if="t.attachments && t.attachments.length > 0" class="item-attachments">
                   <div class="attachments-count">
                     📎 {{ t.attachments.length }} файл(ов)
@@ -340,6 +341,170 @@
       </div>
     </div>
 
+    <!-- Модальное окно деталей задачи (для исполнителя и админа) -->
+    <div v-if="showTaskDetailsModal" class="boards-modal-overlay" @click="closeTaskDetailsModal">
+      <div class="boards-modal boards-modal-large" @click.stop>
+        <div class="boards-modal-header">
+          <h2 class="boards-modal-title">Детали задачи</h2>
+          <button class="boards-modal-close" @click="closeTaskDetailsModal">×</button>
+        </div>
+        
+        <div class="boards-modal-body">
+          <div class="boards-modal-section">
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Название задачи</label>
+              <div class="task-detail-value">{{ selectedTask?.title }}</div>
+            </div>
+            
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Описание</label>
+              <div class="task-detail-value">{{ selectedTask?.description || 'Нет описания' }}</div>
+            </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Статус</label>
+              <div class="task-detail-value">{{ getColumnTitle(selectedTask?.column_id) }}</div>
+            </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Приоритет</label>
+              <div class="task-detail-value">{{ getPriorityText(selectedTask?.priority) }}</div>
+            </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Срок выполнения</label>
+              <div class="task-detail-value" v-if="selectedTask?.due_date">
+                {{ formatDueDate(selectedTask.due_date) }}
+                <span :class="getDueDateClass(selectedTask.due_date)">
+                  ({{ getDueDateText(selectedTask.due_date) }})
+                </span>
+              </div>
+              <div class="task-detail-value" v-else>Не установлен</div>
+            </div>
+
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Исполнитель</label>
+              <div class="task-detail-value">{{ selectedTask?.assignee_email || 'Не назначен' }}</div>
+            </div>
+
+            <!-- Статус подтверждения -->
+            <div v-if="selectedTask?.is_completed" class="boards-modal-field">
+              <label class="boards-modal-label">Статус проверки</label>
+              <div class="task-detail-value">
+                <span v-if="selectedTask.approval_status === 'pending'" class="status-pending">
+                  ⏳ На проверке у администратора
+                </span>
+                <span v-if="selectedTask.approval_status === 'approved'" class="status-approved">
+                  ✅ Задача подтверждена
+                </span>
+                <span v-if="selectedTask.approval_status === 'rejected'" class="status-rejected">
+                  ❌ Требует доработки
+                </span>
+              </div>
+            </div>
+
+            <!-- Комментарий админа при отклонении -->
+            <div v-if="selectedTask?.approval_comment && selectedTask.approval_status === 'rejected'" class="boards-modal-field">
+              <label class="boards-modal-label">Комментарий администратора</label>
+              <div class="task-detail-value admin-comment-text">
+                {{ selectedTask.approval_comment }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Секция прикрепленных файлов (только для завершенных задач) -->
+          <div v-if="isTaskCompleted" class="boards-modal-section">
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Прикрепленные файлы</label>
+              <div class="file-upload-section">
+                <div class="file-upload-area" 
+                     @click="triggerFileInput"
+                     @drop="handleFileDrop"
+                     @dragover.prevent
+                     @dragenter.prevent>
+                  <input 
+                    type="file" 
+                    ref="fileInput"
+                    @change="handleFileSelect"
+                    multiple
+                    style="display: none"
+                  />
+                  <div class="file-upload-content">
+                    <div class="file-upload-icon">📎</div>
+                    <div class="file-upload-text">
+                      Перетащите файлы сюда или нажмите для выбора
+                    </div>
+                    <div class="file-upload-hint">
+                      Максимальный размер: 50MB
+                    </div>
+                  </div>
+                </div>
+                
+                <div v-if="selectedTask.attachments && selectedTask.attachments.length > 0" class="attachments-list">
+                  <div class="attachments-title">Прикрепленные файлы:</div>
+                  <div 
+                    v-for="attachment in selectedTask.attachments" 
+                    :key="attachment.id"
+                    class="attachment-item"
+                  >
+                    <div class="attachment-info">
+                      <span class="attachment-name">{{ attachment.filename }}</span>
+                      <span class="attachment-size">{{ formatFileSize(attachment.file_size) }}</span>
+                    </div>
+                    <div class="attachment-actions">
+                      <button 
+                        class="attachment-btn attachment-download"
+                        @click="downloadAttachment(attachment)"
+                        title="Скачать файл"
+                      >
+                        ⬇️
+                      </button>
+                      <button 
+                        class="attachment-btn attachment-delete"
+                        @click="deleteAttachment(attachment.id)"
+                        title="Удалить"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Кнопки действий для исполнителя -->
+          <div v-if="!isAdmin && canChangeTaskStatus(selectedTask)" class="boards-modal-section">
+            <div class="boards-modal-field">
+              <label class="boards-modal-label">Действия</label>
+              <div class="task-actions">
+                <button 
+                  v-if="isPlannedColumn(selectedTask.column_id) && !selectedTask.is_completed"
+                  class="status-btn move-to-work large"
+                  @click="moveToWork(selectedTask)"
+                >
+                  ➡️ Перевести в работу
+                </button>
+                <button 
+                  v-if="isWorkColumn(selectedTask.column_id) && !selectedTask.is_completed"
+                  class="status-btn move-to-done large"
+                  @click="moveToDone(selectedTask)"
+                >
+                  ✅ Отметить как выполненную
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="boards-modal-actions">
+          <button class="boards-modal-btn boards-modal-btn-cancel" @click="closeTaskDetailsModal">
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="toast.visible" :class="['toast', `toast-${toast.type}`]">
       {{ toast.message }}
     </div>
@@ -364,10 +529,12 @@ const isAdmin = ref(false)
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showRejectModal = ref(false)
+const showTaskDetailsModal = ref(false)
 const creating = ref(false)
 const updating = ref(false)
 const deleting = ref(false)
 const rejecting = ref(false)
+const uploading = ref(false)
 
 const newTask = ref({
   title: '',
@@ -388,8 +555,11 @@ const editingTask = ref({
   due_date: null
 })
 
+const selectedTask = ref(null)
 const taskToReject = ref(null)
 const rejectionComment = ref('')
+
+const fileInput = ref(null)
 
 const tasksByColumn = computed(() => {
   const grouped = {}
@@ -401,6 +571,12 @@ const tasksByColumn = computed(() => {
 
 const isTeamProject = computed(() => {
   return boardMembers.value.length > 1
+})
+
+const isTaskCompleted = computed(() => {
+  if (!selectedTask.value) return false
+  const doneColumn = columns.value.find(col => col.title.toLowerCase().includes('готов'))
+  return doneColumn && selectedTask.value.column_id === doneColumn.id
 })
 
 // Определяем колонки по их названиям
@@ -551,6 +727,28 @@ const getDueDateClass = (dateString) => {
   return 'due-date-normal'
 }
 
+const getDueDateText = (dateString) => {
+  if (!dateString) return ''
+  
+  const dueDate = new Date(dateString)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  const timeDiff = dueDate.getTime() - today.getTime()
+  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24))
+  
+  if (daysDiff < 0) {
+    return `Просрочено на ${Math.abs(daysDiff)} дн.`
+  } else if (daysDiff === 0) {
+    return 'Сегодня'
+  } else if (daysDiff === 1) {
+    return 'Завтра'
+  } else if (daysDiff <= 3) {
+    return `Через ${daysDiff} дн.`
+  }
+  return `Осталось ${daysDiff} дн.`
+}
+
 const getPriorityText = (priority) => {
   const priorities = {
     low: 'Низкий',
@@ -559,6 +757,11 @@ const getPriorityText = (priority) => {
     critical: 'Критический'
   }
   return priorities[priority] || priority
+}
+
+const getColumnTitle = (columnId) => {
+  const column = columns.value.find(col => col.id === columnId)
+  return column ? column.title : 'Неизвестно'
 }
 
 const canChangeTaskStatus = (task) => {
@@ -597,6 +800,10 @@ const moveToWork = async (task) => {
     const taskIndex = tasks.value.findIndex(t => t.id === task.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].column_id = workColumn.value.id
+    }
+
+    if (selectedTask.value && selectedTask.value.id === task.id) {
+      selectedTask.value.column_id = workColumn.value.id
     }
 
     showToast('Задача перемещена в работу', 'success')
@@ -645,6 +852,12 @@ const moveToDone = async (task) => {
       tasks.value[taskIndex].approval_status = 'pending'
     }
 
+    if (selectedTask.value && selectedTask.value.id === task.id) {
+      selectedTask.value.is_completed = true
+      selectedTask.value.column_id = doneColumn.value.id
+      selectedTask.value.approval_status = 'pending'
+    }
+
     showToast('Задача отправлена на проверку администратору', 'success')
   } catch (error) {
     console.error('Ошибка отметки задачи как выполненной:', error)
@@ -674,6 +887,11 @@ const approveTask = async (task) => {
     if (taskIndex !== -1) {
       tasks.value[taskIndex].approval_status = 'approved'
       tasks.value[taskIndex].approval_comment = null
+    }
+
+    if (selectedTask.value && selectedTask.value.id === task.id) {
+      selectedTask.value.approval_status = 'approved'
+      selectedTask.value.approval_comment = null
     }
 
     showToast('Задача подтверждена!', 'success')
@@ -726,12 +944,8 @@ const rejectTask = async () => {
       is_completed: false,
       column_id: targetColumnId,
       approval_status: 'rejected',
+      approval_comment: rejectionComment.value,
       updated_at: new Date().toISOString()
-    }
-
-    // Добавляем комментарий только если колонка существует
-    if (taskToReject.value.hasOwnProperty('approval_comment')) {
-      updateData.approval_comment = rejectionComment.value
     }
 
     console.log('Данные для обновления:', updateData)
@@ -752,10 +966,14 @@ const rejectTask = async () => {
       tasks.value[taskIndex].is_completed = false
       tasks.value[taskIndex].column_id = targetColumnId
       tasks.value[taskIndex].approval_status = 'rejected'
-      
-      if (taskToReject.value.hasOwnProperty('approval_comment')) {
-        tasks.value[taskIndex].approval_comment = rejectionComment.value
-      }
+      tasks.value[taskIndex].approval_comment = rejectionComment.value
+    }
+
+    if (selectedTask.value && selectedTask.value.id === taskToReject.value.id) {
+      selectedTask.value.is_completed = false
+      selectedTask.value.column_id = targetColumnId
+      selectedTask.value.approval_status = 'rejected'
+      selectedTask.value.approval_comment = rejectionComment.value
     }
 
     showToast('Задача возвращена на доработку', 'success')
@@ -827,15 +1045,15 @@ const closeEditModal = () => {
   }
 }
 
-const openTaskDetails = (task) => {
-  // Для исполнителя - открываем модальное окно смены статуса
-  // Для админа - открываем редактирование
-  if (isAdmin.value) {
-    openEditModal(task)
-  } else if (canChangeTaskStatus(task)) {
-    // Для исполнителя показываем информацию о задаче
-    console.log('Открыть детали задачи для исполнителя:', task)
-  }
+const openTaskDetails = async (task) => {
+  selectedTask.value = { ...task }
+  await loadTaskAttachments(task.id)
+  showTaskDetailsModal.value = true
+}
+
+const closeTaskDetailsModal = () => {
+  showTaskDetailsModal.value = false
+  selectedTask.value = null
 }
 
 const createTask = async () => {
@@ -999,10 +1217,26 @@ const deleteTask = async () => {
   deleting.value = true
   try {
     // Сначала удаляем вложения задачи
-    await supabase
+    const { data: attachments } = await supabase
       .from('attachments')
-      .delete()
+      .select('*')
       .eq('task_id', editingTask.value.id)
+
+    if (attachments && attachments.length > 0) {
+      // Удаляем файлы из storage
+      const filePaths = attachments.map(att => att.file_path).filter(Boolean)
+      if (filePaths.length > 0) {
+        await supabase.storage
+          .from('task-attachments')
+          .remove(filePaths)
+      }
+
+      // Удаляем записи о вложениях
+      await supabase
+        .from('attachments')
+        .delete()
+        .eq('task_id', editingTask.value.id)
+    }
 
     // Затем удаляем саму задачу
     const { error } = await supabase
@@ -1022,6 +1256,278 @@ const deleteTask = async () => {
     showToast('Ошибка при удалении задачи', 'error')
   } finally {
     deleting.value = false
+  }
+}
+
+// === ФУНКЦИОНАЛ ПРИКРЕПЛЕНИЯ ФАЙЛОВ ===
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const loadTaskAttachments = async (taskId) => {
+  try {
+    const { data, error } = await supabase
+      .from('attachments')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('uploaded_at', { ascending: false })
+    
+    if (error) throw error
+    
+    if (selectedTask.value && selectedTask.value.id === taskId) {
+      selectedTask.value.attachments = data || []
+    }
+    
+    return data || []
+  } catch (error) {
+    console.error('Ошибка загрузки вложений:', error)
+    return []
+  }
+}
+
+const loadTaskAttachmentsForAllTasks = async () => {
+  try {
+    if (tasks.value.length === 0) return
+    
+    const taskIds = tasks.value.map(t => t.id)
+    const { data, error } = await supabase
+      .from('attachments')
+      .select('*')
+      .in('task_id', taskIds)
+    
+    if (error) throw error
+    
+    const attachmentsByTask = {}
+    data?.forEach(attachment => {
+      if (!attachmentsByTask[attachment.task_id]) {
+        attachmentsByTask[attachment.task_id] = []
+      }
+      attachmentsByTask[attachment.task_id].push(attachment)
+    })
+    
+    tasks.value.forEach(task => {
+      task.attachments = attachmentsByTask[task.id] || []
+    })
+  } catch (error) {
+    console.error('Ошибка загрузки вложений для всех задач:', error)
+  }
+}
+
+const triggerFileInput = () => {
+  if (!isTaskCompleted.value) {
+    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+    return
+  }
+  fileInput.value?.click()
+}
+
+const handleFileSelect = async (event) => {
+  const files = Array.from(event.target.files)
+  if (files.length === 0) return
+  
+  if (!isTaskCompleted.value) {
+    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+    return
+  }
+  
+  await uploadFiles(files)
+  event.target.value = ''
+}
+
+const handleFileDrop = async (event) => {
+  event.preventDefault()
+  const files = Array.from(event.dataTransfer.files)
+  if (files.length === 0) return
+  
+  if (!isTaskCompleted.value) {
+    showToast('Файлы можно прикреплять только к завершенным задачам', 'warning')
+    return
+  }
+  
+  await uploadFiles(files)
+}
+
+const uploadFiles = async (files) => {
+  if (!selectedTask.value) return
+  
+  uploading.value = true
+  
+  try {
+    for (const file of files) {
+      if (file.size > 50 * 1024 * 1024) {
+        showToast(`Файл "${file.name}" слишком большой (макс. 50MB)`, 'error')
+        continue
+      }
+      
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `${selectedTask.value.id}/${fileName}`
+      
+      try {
+        // Загружаем файл в Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('task-attachments')
+          .upload(filePath, file)
+        
+        if (uploadError) {
+          console.error('Ошибка загрузки файла:', uploadError)
+          showToast(`Ошибка загрузки файла "${file.name}": ${uploadError.message}`, 'error')
+          continue
+        }
+        
+        // Получаем публичный URL для скачивания
+        const { data: urlData } = supabase.storage
+          .from('task-attachments')
+          .getPublicUrl(filePath)
+        
+        // Сохраняем информацию о файле в базе данных
+        const { data: attachmentData, error: attachmentError } = await supabase
+          .from('attachments')
+          .insert({
+            task_id: selectedTask.value.id,
+            filename: file.name,
+            file_path: filePath,
+            file_size: file.size,
+            file_url: urlData.publicUrl,
+            uploaded_by_id: currentUser.value.id,
+            uploaded_at: new Date().toISOString()
+          })
+          .select()
+          .single()
+        
+        if (attachmentError) {
+          // Если не удалось сохранить в БД, удаляем файл из storage
+          await supabase.storage
+            .from('task-attachments')
+            .remove([filePath])
+          
+          console.error('Ошибка сохранения информации о файле:', attachmentError)
+          showToast(`Ошибка сохранения файла "${file.name}": ${attachmentError.message}`, 'error')
+          continue
+        }
+        
+        if (!selectedTask.value.attachments) {
+          selectedTask.value.attachments = []
+        }
+        selectedTask.value.attachments.push(attachmentData)
+        
+        const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+        if (taskIndex !== -1) {
+          if (!tasks.value[taskIndex].attachments) {
+            tasks.value[taskIndex].attachments = []
+          }
+          tasks.value[taskIndex].attachments.push(attachmentData)
+        }
+        
+        showToast(`Файл "${file.name}" успешно загружен`, 'success')
+        
+      } catch (fileError) {
+        console.error('Ошибка сохранения файла:', fileError)
+        showToast(`Ошибка при сохранении файла "${file.name}": ${fileError.message}`, 'error')
+        continue
+      }
+    }
+  } catch (error) {
+    console.error('Общая ошибка при загрузке файлов:', error)
+    showToast('Ошибка при загрузке файлов: ' + error.message, 'error')
+  } finally {
+    uploading.value = false
+  }
+}
+
+const downloadAttachment = async (attachment) => {
+  try {
+    if (attachment.file_url) {
+      // Используем прямой URL для скачивания
+      const a = document.createElement('a')
+      a.href = attachment.file_url
+      a.download = attachment.filename
+      a.target = '_blank'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      showToast('Файл скачивается', 'success')
+    } else {
+      // Альтернативный способ через download
+      const { data, error } = await supabase.storage
+        .from('task-attachments')
+        .download(attachment.file_path)
+      
+      if (error) throw error
+      
+      const url = URL.createObjectURL(data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = attachment.filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      showToast('Файл скачивается', 'success')
+    }
+  } catch (error) {
+    console.error('Ошибка скачивания файла:', error)
+    
+    // Резервный вариант - скачать информацию о файле
+    const message = `Файл "${attachment.filename}" не может быть скачан через веб-интерфейс.\n\nИнформация о файле:\n- Название: ${attachment.filename}\n- Размер: ${formatFileSize(attachment.file_size)}\n- Путь: ${attachment.file_path}\n\nДля работы с файлами используйте локальное приложение.`
+    
+    const blob = new Blob([message], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `info-${attachment.filename}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+    showToast('Скачана информация о файле', 'info')
+  }
+}
+
+const deleteAttachment = async (attachmentId) => {
+  try {
+    const attachment = selectedTask.value.attachments.find(a => a.id === attachmentId)
+    if (!attachment) return
+    
+    // Удаляем файл из storage
+    if (attachment.file_path) {
+      const { error: storageError } = await supabase.storage
+        .from('task-attachments')
+        .remove([attachment.file_path])
+      
+      if (storageError) {
+        console.error('Ошибка удаления файла из storage:', storageError)
+      }
+    }
+    
+    // Удаляем запись из базы данных
+    const { error: dbError } = await supabase
+      .from('attachments')
+      .delete()
+      .eq('id', attachmentId)
+    
+    if (dbError) {
+      throw dbError
+    }
+    
+    selectedTask.value.attachments = selectedTask.value.attachments.filter(a => a.id !== attachmentId)
+    
+    const taskIndex = tasks.value.findIndex(t => t.id === selectedTask.value.id)
+    if (taskIndex !== -1) {
+      tasks.value[taskIndex].attachments = tasks.value[taskIndex].attachments.filter(a => a.id !== attachmentId)
+    }
+    
+    showToast('Файл удален', 'success')
+  } catch (error) {
+    console.error('Ошибка удаления файла:', error)
+    showToast('Ошибка при удалении файла', 'error')
   }
 }
 
@@ -1090,6 +1596,8 @@ const loadTasks = async () => {
       }))
 
       console.log('Загруженные задачи:', tasks.value)
+      
+      await loadTaskAttachmentsForAllTasks()
     } else {
       tasks.value = []
     }
@@ -1128,6 +1636,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Все стили из предыдущего ответа остаются без изменений */
 .container {
   min-height: 100vh;
 }
@@ -1204,6 +1713,16 @@ onMounted(() => {
   opacity: 0.8;
 }
 
+.kanban-item.task-pending {
+  background: #fff3cd;
+  border-color: #ffeaa7;
+}
+
+.kanban-item.task-rejected {
+  background: #f8d7da;
+  border-color: #f5c6cb;
+}
+
 .item-header {
   display: flex;
   justify-content: space-between;
@@ -1222,85 +1741,98 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.status-toggle-btn {
-  background: none;
-  border: 2px solid #d1d5db;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
+.user-status-actions {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.status-toggle-btn.incomplete {
-  color: #6b7280;
-  border-color: #d1d5db;
-}
-
-.status-toggle-btn.completed {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
-}
-
-.status-toggle-btn:hover {
-  transform: scale(1.1);
-}
-
-.status-toggle-btn.incomplete:hover {
-  border-color: #10b981;
-  color: #10b981;
-}
-
-.status-toggle-btn-large {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border: 2px solid #d1d5db;
-  border-radius: 8px;
-  background: white;
+.status-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  width: 100%;
+  white-space: nowrap;
 }
 
-.status-toggle-btn-large.incomplete {
-  color: #6b7280;
-  border-color: #d1d5db;
+.move-to-work {
+  background: #fef3c7;
+  color: #92400e;
 }
 
-.status-toggle-btn-large.completed {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
+.move-to-work:hover {
+  background: #fde68a;
 }
 
-.status-toggle-btn-large:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+.move-to-done {
+  background: #d1fae5;
+  color: #065f46;
 }
 
-.status-toggle-btn-large:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.move-to-done:hover {
+  background: #a7f3d0;
 }
 
-.status-icon {
-  font-size: 18px;
-  font-weight: bold;
+.approval-status {
+  margin-top: 8px;
 }
 
-.status-text {
+.status-pending {
+  color: #f59e0b;
+  font-size: 12px;
   font-weight: 500;
 }
 
-.task-status-control {
-  margin-bottom: 15px;
+.status-approved {
+  color: #10b981;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-rejected {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.admin-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.approve-btn {
+  background: #10b981;
+  color: white;
+}
+
+.approve-btn:hover {
+  background: #059669;
+}
+
+.reject-btn {
+  background: #ef4444;
+  color: white;
+}
+
+.reject-btn:hover {
+  background: #dc2626;
 }
 
 .item-desc {
@@ -1308,6 +1840,16 @@ onMounted(() => {
   color: #ffffff;
   margin-bottom: 8px;
   line-height: 1.4;
+}
+
+.admin-comment {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 8px;
+  border-left: 3px solid #f5c6cb;
 }
 
 .item-attachments {
@@ -1413,16 +1955,18 @@ onMounted(() => {
   gap: 4px;
 }
 
-.status-badge {
+.edit-badge {
   font-size: 12px;
+  color: #B54B11;
+  background: #fef3c7;
   padding: 2px 6px;
   border-radius: 4px;
-  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
 }
 
-.status-badge.completed {
-  background: #d1fae5;
-  color: #065f46;
+.edit-badge:hover {
+  background: #fde68a;
 }
 
 .kanban-empty {
@@ -1595,6 +2139,14 @@ onMounted(() => {
 .boards-modal-hint .due-date-soon {
   color: #92400e;
   font-weight: 500;
+}
+
+.fixed-assignee {
+  padding: 10px 12px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  color: #6b7280;
+  font-style: italic;
 }
 
 .file-upload-section {
@@ -1774,6 +2326,32 @@ onMounted(() => {
   font-weight: 500;
 }
 
+.task-detail-value {
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  color: #495057;
+}
+
+.admin-comment-text {
+  background: #fff3cd;
+  border-color: #ffeaa7;
+  color: #856404;
+}
+
+.task-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status-btn.large {
+  padding: 12px 20px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
 .toast {
   position: fixed;
   top: 20px;
@@ -1837,6 +2415,29 @@ onMounted(() => {
   .task-status-controls {
     margin-top: 8px;
     align-self: flex-end;
+  }
+  
+  .user-status-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  
+  .file-upload-area {
+    padding: 20px;
+  }
+  
+  .task-actions {
+    flex-direction: column;
+  }
+  
+  .status-btn.large {
+    width: 100%;
+    text-align: center;
+  }
+  
+  .admin-actions {
+    justify-content: center;
+    width: 100%;
   }
 }
 </style>
