@@ -4,6 +4,16 @@
       <div class="page-content active" id="active-projects">
         <div class="projects-header">АКТИВНЫЕ ПРОЕКТЫ</div>
 
+        <!-- Отладочная информация -->
+        <div v-if="projectsLoading" class="loading-info">
+          Загрузка проектов...
+        </div>
+        <div v-else class="debug-info">
+          Найдено проектов: {{ projects.length }} | 
+          Личных: {{ personalProjects.length }} | 
+          Командных: {{ teamProjects.length }}
+        </div>
+
         <div class="boards-sections">
           <div class="boards-section">
             <h3 class="section-title">ЛИЧНЫЕ ПРОЕКТЫ</h3>
@@ -50,7 +60,9 @@
                   <button class="boards-btn boards-btn-secondary" @click.stop="openProject(project)">Открыть проект</button>
                 </div>
               </div>
-              <div v-if="personalProjects.length === 0" class="boards-empty">Нет личных проектов</div>
+              <div v-if="personalProjects.length === 0" class="boards-empty">
+                Нет личных проектов
+              </div>
             </div>
           </div>
 
@@ -102,7 +114,9 @@
                   <button class="boards-btn boards-btn-secondary" @click.stop="openProject(project)">Открыть проект</button>
                 </div>
               </div>
-              <div v-if="teamProjects.length === 0" class="boards-empty">Нет командных проектов</div>
+              <div v-if="teamProjects.length === 0" class="boards-empty">
+                Нет командных проектов
+              </div>
             </div>
           </div>
         </div>
@@ -114,31 +128,23 @@
       <div class="section" style="margin-bottom: 10px;">
         <div class="section-header">
           <p>Мои задачи</p>
-          <span class="tasks-count" v-if="tasks.length > 0">{{ tasks.length }}</span>
+          <span class="tasks-count" v-if="filteredTasks.length > 0">{{ filteredTasks.length }}</span>
         </div>
         <div class="section-section tasks-container">
           <div v-if="loading" class="loading-tasks">Загрузка задач...</div>
-          <div v-else-if="tasks.length === 0" class="no-tasks">
+          <div v-else-if="filteredTasks.length === 0" class="no-tasks">
             Нет активных задач
           </div>
           <div v-else class="tasks-scrollable">
             <div 
-              v-for="task in tasks" 
+              v-for="task in filteredTasks" 
               :key="task.id" 
               class="task-item"
               :class="{ 
                 completed: task.is_completed && task.approval_status === 'approved',
-                pending: task.approval_status === 'pending',
                 rejected: task.approval_status === 'rejected'
               }"
             >
-              <input 
-                type="checkbox" 
-                :id="'task' + task.id"
-                :checked="task.is_completed && task.approval_status === 'approved'"
-                @change="toggleTask(task)"
-                :disabled="task.approval_status === 'pending'"
-              >
               <label :for="'task' + task.id">
                 <span class="task-title">{{ task.title }}</span>
                 <div class="task-meta">
@@ -147,9 +153,6 @@
                   </span>
                   <span v-if="task.priority" class="priority-badge" :class="task.priority">
                     {{ getPriorityLabel(task.priority) }}
-                  </span>
-                  <span v-if="task.approval_status === 'pending'" class="approval-badge pending">
-                    ⏳ На проверке
                   </span>
                   <span v-if="task.approval_status === 'rejected'" class="approval-badge rejected">
                     ❌ Требует доработки
@@ -188,6 +191,31 @@ const projects = ref([])
 const loading = ref(true)
 const projectsLoading = ref(true)
 const cardBg = ref('#B54B11')
+const isAdmin = ref(false)
+
+// ФИЛЬТРАЦИЯ ЗАДАЧ: 
+// - Обычный пользователь видит только свои НЕ выполненные задачи
+// - Админ видит только задачи на проверке (готовые, но не подтвержденные)
+const filteredTasks = computed(() => {
+  return tasks.value.filter(task => {
+    if (isAdmin.value) {
+      // Админ видит только задачи на проверке (только выполненные задачи со статусом pending)
+      return task.is_completed && task.approval_status === 'pending'
+    } else {
+      // Обычный пользователь видит только свои НЕ выполненные задачи
+      // ИЛИ выполненные, но требующие доработки (rejected)
+      const isMyTask = task.assignee_id === auth.userId.value
+      
+      // Показываем:
+      // 1. Не выполненные задачи
+      // 2. Выполненные задачи, но требующие доработки
+      return isMyTask && (
+        !task.is_completed || 
+        (task.is_completed && task.approval_status === 'rejected')
+      )
+    }
+  })
+})
 
 const personalProjects = computed(() => {
   return projects.value.filter(project => project.isPersonal)
@@ -197,9 +225,40 @@ const teamProjects = computed(() => {
   return projects.value.filter(project => !project.isPersonal)
 })
 
+const checkAdminStatus = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      isAdmin.value = false
+      return
+    }
+
+    // Проверяем, есть ли у пользователя роль админа в любом проекте
+    const { data: userRoles, error } = await supabase
+      .from('user_roles')
+      .select(`
+        role_id,
+        roles:role_id (name_role)
+      `)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.log('Ошибка проверки прав админа:', error)
+      isAdmin.value = false
+      return
+    }
+
+    // Если есть хотя бы одна роль админа - считаем пользователя админом
+    isAdmin.value = userRoles?.some(role => role.roles?.name_role === 'admin') || false
+    
+  } catch (error) {
+    console.error('Ошибка проверки прав админа:', error)
+    isAdmin.value = false
+  }
+}
+
 const loadProjectsWithProgress = async () => {
   projectsLoading.value = true
-  console.log('Начало загрузки проектов...')
   
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -216,180 +275,156 @@ const loadProjectsWithProgress = async () => {
     }
 
     const userId = user.id
-    console.log('ID пользователя:', userId)
+    console.log('🔄 Начинаем загрузку проектов для пользователя:', userId)
 
-    // Получаем все доски пользователя через user_roles
+    // Получаем все доски, в которых состоит пользователь (как в boards.vue)
     const { data: userRoles, error: rolesError } = await supabase
       .from('user_roles')
-      .select(`
-        board_id,
-        boards (
-          id,
-          title,
-          description,
-          background,
-          creator_id,
-          created_at,
-          updated_at
-        )
-      `)
+      .select('board_id')
       .eq('user_id', userId)
 
     if (rolesError) {
-      console.error('Ошибка загрузки user_roles:', rolesError)
+      console.error('❌ Ошибка загрузки user_roles:', rolesError)
+      projects.value = []
+      projectsLoading.value = false
+      return
     }
 
-    // Получаем доски, созданные пользователем
-    const { data: createdBoards, error: createdError } = await supabase
+    const assignedIds = (userRoles || []).map(r => r.board_id).filter(Boolean)
+
+    if (assignedIds.length === 0) {
+      console.log('ℹ️ У пользователя нет проектов')
+      projects.value = []
+      projectsLoading.value = false
+      return
+    }
+
+    // Получаем все доски пользователя
+    const { data: boardsData, error: boardsError } = await supabase
       .from('boards')
       .select('*')
-      .eq('creator_id', userId)
-
-    if (createdError) {
-      console.error('Ошибка загрузки созданных досок:', createdError)
+      .in('id', assignedIds)
+    
+    if (boardsError) {
+      console.error('❌ Ошибка загрузки досок:', boardsError)
+      projects.value = []
+      projectsLoading.value = false
+      return
     }
 
-    console.log('Доски из user_roles:', userRoles)
-    console.log('Созданные доски:', createdBoards)
-
-    // Объединяем все доски
-    const allBoards = []
-    const boardIds = new Set()
-
-    // Добавляем доски из user_roles
-    if (userRoles) {
-      userRoles.forEach(role => {
-        if (role.boards && !boardIds.has(role.boards.id)) {
-          boardIds.add(role.boards.id)
-          allBoards.push(role.boards)
-        }
-      })
-    }
-
-    // Добавляем созданные доски
-    if (createdBoards) {
-      createdBoards.forEach(board => {
-        if (!boardIds.has(board.id)) {
-          boardIds.add(board.id)
-          allBoards.push(board)
-        }
-      })
-    }
-
-    console.log('Все доски:', allBoards)
+    console.log('📋 Найдено досок:', boardsData?.length || 0)
 
     const projectsWithProgress = []
 
     // Для каждой доски считаем прогресс
-    for (const board of allBoards) {
-      console.log('Обработка доски:', board.title)
+    for (const board of boardsData) {
+      console.log(`🔄 Обрабатываем доску: ${board.title} (ID: ${board.id})`)
+      
+      try {
+        // Получаем участников доски
+        const { data: membersData, error: membersError } = await supabase
+          .from('user_roles')
+          .select(`
+            user_id,
+            users:user_id (email, id),
+            roles:role_id (name_role)
+          `)
+          .eq('board_id', board.id)
 
-      // Получаем участников доски
-      const { data: boardMembers, error: membersError } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('board_id', board.id)
-
-      if (membersError) {
-        console.error('Ошибка загрузки участников:', membersError)
-      }
-
-      // Получаем колонки доски
-      const { data: boardColumns, error: columnsError } = await supabase
-        .from('columns')
-        .select('id, title')
-        .eq('board_id', board.id)
-
-      if (columnsError) {
-        console.error('Ошибка загрузки колонок:', columnsError)
-      }
-
-      const columnIds = boardColumns?.map(col => col.id) || []
-      console.log('Колонки доски:', boardColumns)
-
-      // Получаем задачи доски
-      let totalTasks = 0
-      let completedTasks = 0
-
-      if (columnIds.length > 0) {
-        const { data: tasksData, error: tasksError } = await supabase
-          .from('tasks')
-          .select('id, is_completed, approval_status, column_id')
-          .in('column_id', columnIds)
-
-        if (tasksError) {
-          console.error('Ошибка загрузки задач:', tasksError)
-        } else {
-          totalTasks = tasksData?.length || 0
-          
-          // НОВАЯ ЛОГИКА: считаем задачу завершенной если она находится в колонке "Готова" или "Выполнено"
-          // или если она помечена как выполненная
-          completedTasks = tasksData?.filter(task => {
-            // Находим колонку задачи
-            const taskColumn = boardColumns?.find(col => col.id === task.column_id)
-            const columnTitle = taskColumn?.title?.toLowerCase() || ''
-            
-            // Задача считается завершенной если:
-            // 1. Она в колонке с названием "готово", "выполнено", "done", "completed" и т.д.
-            // 2. ИЛИ она помечена как is_completed = true
-            return (
-              columnTitle.includes('готов') || 
-              columnTitle.includes('выполн') || 
-              columnTitle.includes('done') || 
-              columnTitle.includes('complete') ||
-              task.is_completed === true
-            )
-          }).length || 0
-          
-          console.log(`Задачи доски ${board.title}:`, tasksData)
-          console.log(`Всего задач: ${totalTasks}, завершено: ${completedTasks}`)
+        if (membersError) {
+          console.error(`❌ Ошибка загрузки участников для доски ${board.id}:`, membersError)
         }
+
+        // Получаем колонки доски
+        const { data: columnsData, error: columnsError } = await supabase
+          .from('columns')
+          .select('id, title')
+          .eq('board_id', board.id)
+
+        if (columnsError) {
+          console.error(`❌ Ошибка загрузки колонок для доски ${board.id}:`, columnsError)
+        }
+
+        console.log(`📊 Колонки для доски ${board.title}:`, columnsData?.length || 0)
+
+        const columnIds = columnsData?.map(col => col.id) || []
+        let totalTasks = 0
+        let completedTasks = 0
+
+        // Получаем задачи доски если есть колонки
+        if (columnIds.length > 0) {
+          const { data: tasksData, error: tasksError } = await supabase
+            .from('tasks')
+            .select('id, is_completed, column_id')
+            .in('column_id', columnIds)
+
+          if (tasksError) {
+            console.error(`❌ Ошибка загрузки задач для доски ${board.id}:`, tasksError)
+          } else {
+            totalTasks = tasksData?.length || 0
+            
+            // Считаем завершенные задачи (в колонке "Готово" или is_completed = true)
+            completedTasks = tasksData?.filter(task => {
+              const taskColumn = columnsData?.find(col => col.id === task.column_id)
+              const columnTitle = taskColumn?.title?.toLowerCase() || ''
+              
+              return (
+                columnTitle.includes('готов') || 
+                columnTitle.includes('выполн') || 
+                columnTitle.includes('done') || 
+                columnTitle.includes('complete') ||
+                task.is_completed === true
+              )
+            }).length || 0
+          }
+        }
+
+        console.log(`📝 Задачи для доски ${board.title}: всего ${totalTasks}, завершено ${completedTasks}`)
+
+        // Расчет прогресса: (completedTasks / totalTasks) * 100
+        const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+        const members = membersData?.map(item => ({
+          id: item.user_id,
+          email: item.users?.email,
+          role: item.roles?.name_role,
+          isCurrentUser: item.user_id === userId
+        })) || []
+
+        console.log(`👥 Участники доски ${board.title}:`, members.length)
+
+        projectsWithProgress.push({
+          id: board.id,
+          title: board.title,
+          description: board.description,
+          background: board.background,
+          creator_id: board.creator_id,
+          created_at: board.created_at,
+          updated_at: board.updated_at,
+          totalTasks,
+          completedTasks,
+          completionRate,
+          members,
+          isPersonal: members.length === 1 && board.creator_id === userId
+        })
+
+        console.log(`✅ Доска ${board.title} успешно обработана`)
+
+      } catch (error) {
+        console.error(`❌ Ошибка обработки доски ${board.id}:`, error)
+        // Продолжаем обработку других досок
       }
-
-      // Правильный расчет процента завершенности: (completedTasks / totalTasks) * 100
-      const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-
-      // Получаем информацию об участниках
-      const { data: membersData, error: membersDataError } = await supabase
-        .from('user_roles')
-        .select(`
-          user_id,
-          users:user_id (email, id),
-          roles:role_id (name_role)
-        `)
-        .eq('board_id', board.id)
-
-      const members = membersData?.map(item => ({
-        id: item.user_id,
-        email: item.users?.email,
-        role: item.roles?.name_role,
-        isCurrentUser: item.user_id === userId
-      })) || []
-
-      projectsWithProgress.push({
-        id: board.id,
-        title: board.title,
-        description: board.description,
-        background: board.background,
-        creator_id: board.creator_id,
-        created_at: board.created_at,
-        updated_at: board.updated_at,
-        totalTasks,
-        completedTasks,
-        completionRate,
-        members,
-        isPersonal: members.length === 1 && board.creator_id === userId
-      })
     }
 
     projects.value = projectsWithProgress.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-    console.log('Итоговые проекты:', projects.value)
+    console.log('🎉 Все проекты загружены:', projects.value.length)
 
   } catch (error) {
-    console.error('Общая ошибка загрузки проектов:', error)
+    console.error('💥 Общая ошибка загрузки проектов:', error)
     projects.value = []
   } finally {
     projectsLoading.value = false
+    console.log('🏁 Загрузка проектов завершена')
   }
 }
 
@@ -432,7 +467,7 @@ const loadTasks = async () => {
 
     const userId = user.id
 
-    // Получаем задачи пользователя с информацией о проектах
+    // Получаем ВСЕ задачи пользователя (и выполненные и не выполненные)
     const { data, error } = await supabase
       .from('tasks')
       .select(`
@@ -456,37 +491,13 @@ const loadTasks = async () => {
       tasks.value = []
     } else {
       tasks.value = data || []
-      console.log('Загруженные задачи:', tasks.value)
+      console.log('✅ Задачи загружены:', tasks.value.length)
     }
   } catch (error) {
     console.error('Общая ошибка загрузки задач:', error)
     tasks.value = []
   } finally {
     loading.value = false
-  }
-}
-
-const toggleTask = async (task) => {
-  try {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        is_completed: !task.is_completed,
-        approval_status: task.is_completed ? 'pending' : 'pending',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', task.id)
-
-    if (error) throw error
-    
-    task.is_completed = !task.is_completed
-    task.approval_status = 'pending'
-    
-    if (task.is_completed) {
-      await loadProjectsWithProgress()
-    }
-  } catch (error) {
-    console.error('Ошибка обновления задачи:', error)
   }
 }
 
@@ -545,7 +556,8 @@ const getProjectColor = (task) => {
 }
 
 onMounted(() => {
-  console.log('Компонент Main.vue загружен')
+  console.log('🚀 Компонент Main.vue загружен')
+  checkAdminStatus()
   loadTasks()
   loadProjectsWithProgress()
 })
@@ -581,6 +593,25 @@ onMounted(() => {
   color: #E6D1A4;
   margin-bottom: 20px;
   text-align: center;
+}
+
+.loading-info {
+  text-align: center;
+  padding: 10px;
+  background: #B54B11;
+  color: #E6D1A4;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.debug-info {
+  text-align: center;
+  padding: 8px;
+  background: #CE7939;
+  color: #480902;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  font-size: 0.9em;
 }
 
 .boards-sections {
@@ -755,5 +786,174 @@ onMounted(() => {
   font-size: 0.8em;
   color: rgba(230, 209, 164, 0.8);
   text-align: center;
+}
+
+/* Стили для задач */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.tasks-count {
+  background: #B54B11;
+  color: #E6D1A4;
+  border-radius: 50%;
+  width: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8em;
+  font-weight: bold;
+}
+
+.tasks-container {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tasks-scrollable {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.task-item:hover {
+  border-color: #B54B11;
+}
+
+.task-item.completed {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+  opacity: 0.8;
+}
+
+.task-item.rejected {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.task-item label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.task-title {
+  font-weight: 500;
+  color: #374151;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.task-due-date {
+  font-size: 0.8em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.task-due-date.overdue {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.task-due-date.today {
+  background: #fed7aa;
+  color: #c2410c;
+}
+
+.task-due-date.urgent {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.priority-badge {
+  font-size: 0.7em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.priority-badge.low {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.priority-badge.medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.priority-badge.high {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.priority-badge.critical {
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
+.approval-badge {
+  font-size: 0.7em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.approval-badge.rejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.task-project {
+  margin-top: 4px;
+}
+
+.project-badge {
+  font-size: 0.7em;
+  padding: 2px 8px;
+  border-radius: 12px;
+  color: white;
+  font-weight: 500;
+}
+
+.loading-tasks {
+  text-align: center;
+  padding: 20px;
+  color: #6b7280;
+}
+
+.no-tasks {
+  text-align: center;
+  padding: 30px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: #E6D1A4;
 }
 </style>

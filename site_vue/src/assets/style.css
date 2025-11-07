@@ -328,6 +328,100 @@ input[type="checkbox"]:checked + label {
   gap: 15px;
 }
 
+.pomodoro-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+}
+
+.pomodoro-modal {
+  background: #480902;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  max-width: 450px;
+  width: 95%;
+  max-height: 95vh;
+  overflow: hidden;
+  z-index: 10001;
+  animation: modalAppear 0.3s ease-out;
+}
+
+@keyframes modalAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.pomodoro-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #480902;
+  background: #480902;
+  position: relative;
+}
+
+.pomodoro-modal-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  color: #666;
+}
+
+.pomodoro-modal-close:hover {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.pomodoro-modal-content {
+  padding: 24px;
+  max-height: calc(95vh - 80px);
+  overflow-y: auto;
+}
+.pomodoro-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  color: #E6D1A4;
+  text-align: center;
+  min-height: 60px;
+ 
+}
+.pomodoro-mini:hover {
+  background-color: transparent;
+}
+
+.pomodoro-mini.active {
+  background-color: #CE7939;
+  color: #480902;
+}
 
 .timer-display {
   font-size: 3rem;
