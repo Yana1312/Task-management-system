@@ -42,22 +42,23 @@
       </router-link>
     </div>
 
-    <div v-if="showPomodoroModal" class="pomodoro-modal-overlay" @click="closePomodoroModal">
-      <div class="pomodoro-modal" @click.stop>
-        <div class="pomodoro-modal-header">
-          <h3>Pomodoro Таймер</h3>
-          <button class="pomodoro-modal-close" @click="closePomodoroModal">×</button>
-        </div>
-        <div class="pomodoro-modal-content">
-          <PomodoroTimer />
+    <Teleport to="body">
+      <div v-if="showPomodoroModal" class="pomodoro-modal-overlay" @click="closePomodoroModal">
+        <div class="pomodoro-modal" @click.stop>
+          <div class="pomodoro-modal-header">
+            <h3>Pomodoro Таймер</h3>
+            <button class="pomodoro-modal-close" @click="closePomodoroModal">×</button>
+          </div>
+          <div class="pomodoro-modal-content">
+            <PomodoroTimer />
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </nav>
 </template>
-
 <script setup>
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, computed, ref, watch, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { auth } from '../js/auth.js'
 import { pomodoroStore } from '../js/pomodoro.js'
@@ -86,6 +87,22 @@ const closePomodoroModal = () => {
   showPomodoroModal.value = false
 }
 
+watch(showPomodoroModal, (newValue) => {
+  if (newValue) {
+    document.body.classList.add('pomodoro-modal-open')
+    document.body.style.overflow = 'hidden'
+  } else {
+    document.body.classList.remove('pomodoro-modal-open')
+    document.body.style.overflow = ''
+  }
+})
+
+const handleKeydown = (event) => {
+  if (event.key === 'Escape' && showPomodoroModal.value) {
+    closePomodoroModal()
+  }
+}
+
 onMounted(() => {
   console.log('[navbar] mounted userId:', auth.userId.value, 'avatarUrl:', auth.avatarUrl.value)
   if (!auth.avatarUrl.value) {
@@ -95,6 +112,13 @@ onMounted(() => {
   }
   
   pomodoro.requestNotificationPermission()
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown)
+  document.body.classList.remove('pomodoro-modal-open')
+  document.body.style.overflow = ''
 })
 
 const avatarSrc = computed(() => auth.avatarUrl.value || auth.PLACEHOLDER_AVATAR)
