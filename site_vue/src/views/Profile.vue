@@ -3,6 +3,22 @@
     <div class="profile-header">
       <h1 class="title">Личный кабинет</h1>
       <p class="subtitle">Управляйте данными своего аккаунта</p>
+      <div class="profile-actions">
+        <button class="btn" @click="logout">Выйти</button>
+        <a
+          href="https://t.me/uksivt_wizard_bot"
+          class="telegram-link"
+          target="_blank"
+          rel="noopener"
+          aria-label="Открыть бота в Telegram"
+          style="display:flex; align-items:center; gap:8px; text-decoration:none;"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 0C5.372 0 0 5.372 0 12c0 6.627 5.372 12 12 12s12-5.373 12-12C24 5.372 18.628 0 12 0zm5.77 7.6-1.94 9.146c-.146.66-.538.82-1.088.51l-3-2.21-1.447 1.395c-.16.16-.293.293-.6.293l.214-3.04 5.54-5.01c.24-.214-.053-.333-.373-.12l-6.846 4.317-2.948-.92c-.64-.2-.653-.64.133-.946l11.51-4.44c.533-.2 1 .127.833.973z" fill="#2AABEE"/>
+          </svg>
+          <span style="color: inherit;">Открыть бота</span>
+        </a>
+      </div>
     </div>
 
     <section class="profile-card">
@@ -464,4 +480,41 @@ onUnmounted(() => {
   try { authSubscription?.unsubscribe() } catch {}
   window.removeEventListener('storage', onStorage)
 })
+
+async function logout() {
+  try {
+    await supabase.auth.signOut()
+  } catch (e) {
+    console.error('[Profile] signOut error:', e)
+  }
+  try {
+    localStorage.clear()
+  } catch {}
+  // Перенаправим на главную страницу приложения
+  window.location.href = '/'
+}
 </script>
+
+<style scoped>
+.profile-actions {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  z-index: 1000;
+}
+/* Белый цвет текста ссылки Telegram */
+.telegram-link,
+.telegram-link span {
+  color: #ffffff;
+}
+@media (max-width: 640px) {
+  .profile-actions {
+    right: 12px;
+    bottom: 12px;
+    gap: 10px;
+  }
+}
+</style>
