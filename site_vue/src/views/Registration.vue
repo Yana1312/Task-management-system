@@ -123,3 +123,42 @@ const onRegister = async () => {
   router.push({ path: '/', query: { registered: '1' } })
 }
 </script>
+
+<style scoped>
+.input-auth { box-sizing: border-box; }
+.password-input-wrapper {
+  position: relative;
+}
+
+.input-password {
+  padding-right: 44px; /* место под иконку/кнопку справа */
+}
+
+.toggle-password-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.toggle-password-icon {
+  width: 22px;
+  height: 22px;
+  pointer-events: none; /* клики остаются на кнопке */
+}
+
+@media (max-width: 640px) {
+  .input-password { padding-right: 40px; }
+  .toggle-password-btn { right: 10px; width: 26px; height: 26px; }
+  .toggle-password-icon { width: 20px; height: 20px; }
+}
+</style>

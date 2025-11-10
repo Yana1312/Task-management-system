@@ -5,14 +5,7 @@
       <p class="subtitle">Управляйте данными своего аккаунта</p>
       <div class="profile-actions">
         <button class="btn" @click="logout">Выйти</button>
-        <a
-          href="https://t.me/uksivt_wizard_bot"
-          class="telegram-link"
-          target="_blank"
-          rel="noopener"
-          aria-label="Открыть бота в Telegram"
-          style="display:flex; align-items:center; gap:8px; text-decoration:none;"
-        >
+        <a href="https://t.me/uksivt_wizard_bot" class="telegram-link" target="_blank" rel="noopener" aria-label="Открыть бота в Telegram" style="display:flex; align-items:center; gap:8px; text-decoration:none;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 0C5.372 0 0 5.372 0 12c0 6.627 5.372 12 12 12s12-5.373 12-12C24 5.372 18.628 0 12 0zm5.77 7.6-1.94 9.146c-.146.66-.538.82-1.088.51l-3-2.21-1.447 1.395c-.16.16-.293.293-.6.293l.214-3.04 5.54-5.01c.24-.214-.053-.333-.373-.12l-6.846 4.317-2.948-.92c-.64-.2-.653-.64.133-.946l11.51-4.44c.533-.2 1 .127.833.973z" fill="#2AABEE"/>
           </svg>
@@ -129,7 +122,6 @@ import { auth } from '../js/auth.js'
 const username = ref('')
 const newEmail = ref('')
 const selectedAvatar = ref(null)
-let avatarsDirHandle = null
 const tgUsername = ref('')
 
 const showEmailModal = ref(false)
@@ -160,42 +152,41 @@ async function uploadAvatar() {
   const uid = userData?.user?.id
   const email = userData?.user?.email
   const file = selectedAvatar.value
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-  const fileName = `${uid}_${Date.now()}.${ext}`
-  const relativePath = `resources/avatars/${fileName}`
 
-  if (!('showDirectoryPicker' in window)) {
-    alert('Ваш браузер не поддерживает прямое сохранение. Положите файл вручную в public/resources/avatars.')
-    return
+  async function fileToDataURL(f) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = reject
+      reader.readAsDataURL(f)
+    })
   }
 
+  let publicUrl = ''
   try {
-    if (!avatarsDirHandle) {
-       alert('Выберите папку: site_vue/public/resources/avatars')
-       avatarsDirHandle = await window.showDirectoryPicker()
-       if ((avatarsDirHandle.name || '').toLowerCase() !== 'avatars') {
-         alert('Выберите именно папку avatars внутри public/resources')
-         avatarsDirHandle = null
-         return
-       }
-     }
-     const fileHandle = await avatarsDirHandle.getFileHandle(fileName, { create: true })
-    const writable = await fileHandle.createWritable()
-    await writable.write(file)
-    await writable.close()
+    const dataUrl = await fileToDataURL(file)
+    const resp = await fetch('/api/upload-avatar-base64', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: uid || 'user', filename: file.name || 'avatar.jpg', data: String(dataUrl || '') })
+    })
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '')
+      throw new Error('Upload failed: ' + resp.status + (errBody ? ' ' + errBody : ''))
+    }
+    const json = await resp.json()
+    publicUrl = json?.url || ''
+    if (!publicUrl) throw new Error('No URL returned')
   } catch (err) {
-    alert('Не удалось сохранить файл: ' + (err?.message || err))
+    alert('Ошибка загрузки файла: ' + (err?.message || err))
     return
   }
-
-  const publicUrl = '/' + relativePath
 
   const { data: updatedById, error: updErr1 } = await supabase
     .from('users')
     .update({ avatar_url: publicUrl })
     .eq('id', uid)
     .select()
-
   if (updErr1) { alert('Ошибка сохранения аватара: ' + updErr1.message); return }
 
   if (!updatedById || updatedById.length === 0) {
@@ -209,7 +200,7 @@ async function uploadAvatar() {
   auth.avatarUrl.value = publicUrl
   try { localStorage.setItem('avatar_url', publicUrl) } catch {}
   selectedAvatar.value = null
-  alert('Аватар сохранен: ' + publicUrl)
+  alert('Аватар загружен и установлен')
 }
 
 async function loadProfile() {

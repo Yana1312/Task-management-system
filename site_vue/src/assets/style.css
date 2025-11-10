@@ -65,8 +65,8 @@ body {
 }
 
 .input-auth {
-  width: 350px;
-  height: 40px;
+  width: 380px;
+  height: 60px;
   padding: 12px 16px;
   background-color: #b54b11;
   border: none;
@@ -74,6 +74,7 @@ body {
   border-radius: 20px;
   font-size: 18px;
   color: white;
+  box-sizing: border-box;
 }
 
 .input-auth::placeholder {
@@ -143,6 +144,11 @@ body {
   width: 100%;
 }
 
+/* Ensure password text doesn't overlap the toggle icon */
+.input-password {
+  padding-right: 44px;
+}
+
 .toggle-password-btn {
   position: absolute;
   right: 20px;
@@ -163,6 +169,7 @@ body {
   width: 22px;
   height: 22px;
   opacity: 0.5;
+  pointer-events: none; /* clicks handled by the button */
 }
 
 /* =================== Регистрация =================== */
@@ -764,25 +771,7 @@ input[type="checkbox"]:checked + label {
   margin-bottom: 10px;
 }
 
-@media (max-width: 1200px) {
-  .container {
-    flex-direction: column;
-  }
-  
-  .main {
-    flex-direction: column;
-  }
-  
-  .left-sidebar {
-    width: 100%;
-    flex-direction: row;
-    overflow-x: auto;
-  }
-  
-  .right-sidebar {
-    width: 100%;
-  }
-}
+
 
 /* =================== Навбар =================== */
 
@@ -1815,25 +1804,6 @@ input[type="checkbox"]:checked + label {
   font-size: 14px;
 }
 
-@media (max-width: 768px) {
-  .profile-card {
-    grid-template-columns: 1fr;
-    gap: 30px;
-    padding: 20px;
-  }
-
-  .avatar-img {
-    width: 150px;
-    height: 150px;
-  }
-
-  .modal {
-    margin: 20px;
-    padding: 20px;
-  }
-}
-
-/* Boards page — enhanced cards & modal */
 #boards-page .boards-card-header {
   display: flex;
   align-items: center;
@@ -2722,7 +2692,7 @@ input[type="checkbox"]:checked + label {
         opacity: 1;
     }
 }
-/* Стили для системы подтверждения задач */
+
 .task-completed {
   background: #f0f9ff !important;
   border-color: #bae6fd !important;
@@ -2849,7 +2819,6 @@ input[type="checkbox"]:checked + label {
   background: #7c3aed;
 }
 
-/* Стили для прогресса проектов */
 .project-progress-container {
   display: flex;
   align-items: center;
