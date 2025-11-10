@@ -36,12 +36,6 @@
       </div>
     </div>
 
-    <div class="nav-footer">
-      <router-link to="/main#settings" class="nav-item" :class="{ active: isActiveHash('#settings') }" aria-label="Настройки">
-        <img class="nav-icon-img" src="/resources/settings.svg" alt="Настройки"/>
-      </router-link>
-    </div>
-
     <Teleport to="body">
       <div v-if="showPomodoroModal" class="pomodoro-modal-overlay" @click="closePomodoroModal">
         <div class="pomodoro-modal" @click.stop>

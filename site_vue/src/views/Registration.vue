@@ -32,12 +32,6 @@
         <router-link to="/" class="register-link">Уже есть аккаунт? Войти!</router-link>
       </div>
   
-      <div class="block-alternative-entrance">
-        <img src="/resources/gmail.svg" alt="Войти с помощью gmail" class="alternative-entrance-img"/>
-        <img src="/resources/yandex.svg" alt="Войти с помощью yandex" class="alternative-entrance-img"/>
-        <img src="/resources/telegram.svg" alt="Войти с помощью telegram" class="alternative-entrance-img"/>
-      </div>
-
       <div v-if="toast.visible" :class="['toast', toast.type === 'success' ? 'toast-success' : 'toast-error']">{{ toast.message }}</div>
     </div>
   </div>

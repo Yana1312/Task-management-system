@@ -16,10 +16,6 @@
             </button>
           </div>
           
-          <div class="forgot-password">
-            <a href="#" class="forgot-password-link">Забыли пароль?</a>
-          </div>
-
           <button type="submit" class="btn-enter">Войти</button>
         </form>
       </div>
@@ -28,11 +24,6 @@
         <router-link to="/register" class="register-link">Нет аккаунта? Зарегистрируйтесь!</router-link>
       </div>
   
-      <div class="block-alternative-entrance">
-        <img src="/resources/gmail.svg" alt="Войти с помощью gmail" class="alternative-entrance-img"/>
-        <img src="/resources/yandex.svg" alt="Войти с помощью yandex" class="alternative-entrance-img"/>
-        <img src="/resources/telegram.svg" alt="Войти с помощью telegram" class="alternative-entrance-img"/>
-      </div>      
       <div v-if="toast.visible" :class="['toast', toast.type === 'success' ? 'toast-success' : 'toast-error']">{{ toast.message }}</div>
     </div>
   </div>
