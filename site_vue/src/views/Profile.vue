@@ -147,6 +147,19 @@ function onAvatarSelected(e) {
 
 async function uploadAvatar() {
   if (!selectedAvatar.value) return
+  if (auth.isDemo.value) {
+    const file = selectedAvatar.value
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    auth.saveDemoAvatar(String(dataUrl || ''))
+    selectedAvatar.value = null
+    alert('Аватар сохранён локально (демо)')
+    return
+  }
   const { data: userData, error: userErr } = await supabase.auth.getUser()
   if (userErr) { alert('Ошибка авторизации'); return }
   const uid = userData?.user?.id
@@ -205,6 +218,21 @@ async function uploadAvatar() {
 
 async function loadProfile() {
   try {
+    if (auth.isDemo.value) {
+      try {
+        const demoEmail = localStorage.getItem('demo_email') || 'demo@local.test'
+        const demoUsername = localStorage.getItem('demo_username') || 'demo'
+        const demoTg = localStorage.getItem('demo_tg_username') || ''
+        newEmail.value = demoEmail
+        username.value = demoUsername
+        tgUsername.value = demoTg
+        const demoAvatar = localStorage.getItem('demo_avatar')
+        if (demoAvatar) {
+          auth.avatarUrl.value = demoAvatar
+        }
+      } catch {}
+      return
+    }
     const { data: userData, error: authError } = await supabase.auth.getUser()
     if (authError) {
       console.error('[Profile] Auth error:', authError)
@@ -294,6 +322,11 @@ async function loadProfile() {
 }
 
 async function saveUsername() {
+  if (auth.isDemo.value) {
+    try { localStorage.setItem('demo_username', (username.value || '').trim() || 'demo') } catch {}
+    alert('Имя пользователя сохранено (демо)')
+    return
+  }
   const { data: userData, error } = await supabase.auth.getUser()
   if (error) { alert('Ошибка авторизации'); return }
   const uid = userData?.user?.id
@@ -327,6 +360,13 @@ function openEmailModal() {
 function closeEmailModal() { showEmailModal.value = false }
 
 async function saveTelegramUsername() {
+  if (auth.isDemo.value) {
+    const next = (tgUsername.value || '').trim().replace(/^@+/, '').toLowerCase()
+    tgUsername.value = next
+    try { localStorage.setItem('demo_tg_username', next) } catch {}
+    alert('Telegram подключён (демо)')
+    return
+  }
   const { data: userData, error } = await supabase.auth.getUser()
   if (error) { alert('Ошибка авторизации'); return }
   const uid = userData?.user?.id
@@ -353,6 +393,12 @@ async function saveTelegramUsername() {
 }
 
 async function disconnectTelegram() {
+  if (auth.isDemo.value) {
+    tgUsername.value = ''
+    try { localStorage.removeItem('demo_tg_username') } catch {}
+    alert('Telegram отключён (демо)')
+    return
+  }
   const { data: userData, error } = await supabase.auth.getUser()
   if (error) { alert('Ошибка авторизации'); return }
   const uid = userData?.user?.id
@@ -378,6 +424,11 @@ async function disconnectTelegram() {
 
 async function sendEmailChange() {
   const nextEmail = (emailForm.value.email || '').trim()
+  if (auth.isDemo.value) {
+    emailForm.value.sent = true
+    emailForm.value.message = 'Демо-режим: письмо не отправлялось. Введите любой код (например 000000).'
+    return
+  }
   if (DEV_EMAIL_BYPASS) {
     emailForm.value.sent = true
     emailForm.value.message = 'Режим разработки: письмо не отправлялось. Введите любой код (например 000000).'
@@ -396,6 +447,12 @@ async function verifyEmailChange() {
   const token = (emailForm.value.token || '').trim()
   const targetEmail = (emailForm.value.email || currentEmail || '').trim()
 
+  if (auth.isDemo.value) {
+    newEmail.value = targetEmail
+    try { localStorage.setItem('demo_email', targetEmail) } catch {}
+    emailForm.value.message = 'Почта обновлена (демо)'
+    return
+  }
   if (DEV_EMAIL_BYPASS) {
     if (uid && targetEmail) {
       await supabase.from('users').update({ email: targetEmail }).eq('id', uid)
@@ -421,6 +478,11 @@ function openPasswordModal() {
 function closePasswordModal() { showPasswordModal.value = false }
 
 async function sendPasswordRecovery() {
+  if (auth.isDemo.value) {
+    passwordForm.value.sent = false
+    passwordForm.value.message = 'Демо-режим: восстановление пароля не доступно.'
+    return
+  }
   const { error } = await supabase.auth.resetPasswordForEmail(passwordForm.value.email, { redirectTo: window.location.origin + '/profile' })
   if (error) { passwordForm.value.message = 'Ошибка: ' + error.message; return }
   passwordForm.value.sent = false
@@ -428,6 +490,11 @@ async function sendPasswordRecovery() {
 }
 
 async function updatePassword() {
+  if (auth.isDemo.value) {
+    passwordForm.value.message = 'Пароль обновлен (демо)'
+    showPasswordModal.value = false
+    return
+  }
   const { error: uErr } = await supabase.auth.updateUser({ password: passwordForm.value.newPassword })
   if (uErr) { passwordForm.value.message = 'Ошибка смены пароля: ' + uErr.message; return }
   passwordForm.value.message = 'Пароль обновлен'
@@ -481,7 +548,6 @@ async function logout() {
   try {
     localStorage.clear()
   } catch {}
-  // Перенаправим на главную страницу приложения
   window.location.href = '/'
 }
 </script>
@@ -496,16 +562,9 @@ async function logout() {
   align-items: center;
   z-index: 1000;
 }
-/* Белый цвет текста ссылки Telegram */
+
 .telegram-link,
 .telegram-link span {
   color: #ffffff;
-}
-@media (max-width: 640px) {
-  .profile-actions {
-    right: 12px;
-    bottom: 12px;
-    gap: 10px;
-  }
 }
 </style>

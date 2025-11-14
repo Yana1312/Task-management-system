@@ -18,6 +18,9 @@
           
           <button type="submit" class="btn-enter">Войти</button>
         </form>
+        <div class="demo-login">
+          <button type="button" class="btn-enter" @click="onDemoLogin">Демо вход (офлайн)</button>
+        </div>
       </div>
   
       <div class="register-block">
@@ -42,6 +45,17 @@ const password = ref('')
 const loading = ref(false)
 
 const togglePassword = () => { showPassword.value = !showPassword.value }
+
+const onDemoLogin = async () => {
+  try {
+    auth.enableDemo()
+    await auth.fetchAvatar().catch(() => {})
+    showToast('Демо-режим включен. Данные будут локальными.', 'success')
+    router.push('/main')
+  } catch (e) {
+    showToast('Не удалось включить демо-режим', 'error')
+  }
+}
 
 const onLogin = async () => {
   loading.value = true
@@ -89,3 +103,11 @@ onMounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.demo-login {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+</style>

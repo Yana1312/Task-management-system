@@ -8,12 +8,14 @@ function log(...args) {
 
 const userId = ref(null)
 const avatarUrl = ref(null)
+const isDemo = ref(false)
 
 const PLACEHOLDER_AVATAR = '/resources/user_zaglushka.svg'
 
 export const auth = {
   userId: /** @type {import('vue').Ref<string|null>} */ (/** @type {any} */(ref(null))),
   avatarUrl: /** @type {import('vue').Ref<string|null>} */ (/** @type {any} */(ref(null))),
+  isDemo: /** @type {import('vue').Ref<boolean>} */ (/** @type {any} */(ref(false))),
   PLACEHOLDER_AVATAR: '/resources/user_zaglushka.svg',
 
   setUser(id) {
@@ -41,6 +43,9 @@ export const auth = {
       const avatarStored = localStorage.getItem('avatar_url');
       this.avatarUrl.value = avatarStored || null;
       log('initFromStorage loaded avatar_url:', avatarStored);
+      const demoStored = localStorage.getItem('demo_mode');
+      this.isDemo.value = demoStored === '1';
+      log('initFromStorage loaded demo_mode:', demoStored);
       if (this.avatarUrl.value && (/^\s*<!doctype/i.test(this.avatarUrl.value) || /<html/i.test(this.avatarUrl.value))) {
         log('initFromStorage invalid avatar_url (HTML), clearing');
         this.avatarUrl.value = null;
@@ -49,6 +54,33 @@ export const auth = {
     } catch (e) {
       log('initFromStorage error:', e);
     }
+  },
+
+  initDemoFromEnv() {
+    try {
+      const flag = String(import.meta?.env?.VITE_DEMO_MODE || '').toLowerCase() === 'true';
+      if (flag || localStorage.getItem('demo_mode') === '1') {
+        this.enableDemo();
+      }
+    } catch (e) { log('initDemoFromEnv error:', e); }
+  },
+
+  enableDemo() {
+    log('enableDemo');
+    this.isDemo.value = true;
+    try { localStorage.setItem('demo_mode', '1'); } catch {}
+    const existingId = localStorage.getItem('user_id');
+    this.userId.value = existingId || 'demo-user-id';
+    try { if (!existingId) localStorage.setItem('user_id', this.userId.value); } catch {}
+    const demoAvatar = localStorage.getItem('demo_avatar');
+    this.avatarUrl.value = demoAvatar || this.PLACEHOLDER_AVATAR;
+    log('enableDemo set userId:', this.userId.value, 'avatarUrl:', this.avatarUrl.value);
+  },
+
+  disableDemo() {
+    log('disableDemo');
+    this.isDemo.value = false;
+    try { localStorage.removeItem('demo_mode'); } catch {}
   },
 
   normalizeAvatarUrl(raw) {
@@ -102,8 +134,16 @@ export const auth = {
   },
 
   async fetchAvatar() {
+    if (this.isDemo.value) {
+      log('fetchAvatar in DEMO mode');
+      const demoAvatar = localStorage.getItem('demo_avatar');
+      this.avatarUrl.value = demoAvatar || this.PLACEHOLDER_AVATAR;
+      try { localStorage.setItem('avatar_url', this.avatarUrl.value); } catch {}
+      return this.avatarUrl.value;
+    }
+
     const uid = this.userId.value;
-    log('fetchAvatar start (Supabase-only). userId:', uid);
+    log('fetchAvatar start (Supabase). userId:', uid);
     if (!uid) {
       log('fetchAvatar aborted: no userId');
       this.avatarUrl.value = this.PLACEHOLDER_AVATAR;
@@ -131,5 +171,14 @@ export const auth = {
       this.avatarUrl.value = this.PLACEHOLDER_AVATAR;
       return this.avatarUrl.value;
     }
+  },
+
+  saveDemoAvatar(dataUrl) {
+    if (!dataUrl) return;
+    try {
+      localStorage.setItem('demo_avatar', dataUrl);
+      localStorage.setItem('avatar_url', dataUrl);
+    } catch {}
+    this.avatarUrl.value = dataUrl;
   },
 };

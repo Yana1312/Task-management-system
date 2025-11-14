@@ -188,6 +188,7 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase.js'
 import { auth } from '../js/auth.js'
 import PomodoroTimer from '../components/PomodoroTimer.vue'
+import demoDataRaw from '../assets/demo_data.json'
 
 const router = useRouter()
 const tasks = ref([])
@@ -196,6 +197,16 @@ const loading = ref(true)
 const projectsLoading = ref(true)
 const cardBg = ref('#B54B11')
 const isAdmin = ref(false)
+const demoData = ref(null)
+
+function loadDemoData() {
+  const persisted = (() => { try { return JSON.parse(localStorage.getItem('demo_data') || 'null') } catch { return null } })()
+  demoData.value = persisted || demoDataRaw
+}
+
+function saveDemoData() {
+  try { localStorage.setItem('demo_data', JSON.stringify(demoData.value)) } catch {}
+}
 
 // ФИЛЬТРАЦИЯ ЗАДАЧ: 
 // - Обычный пользователь видит только свои НЕ выполненные задачи
@@ -230,6 +241,7 @@ const teamProjects = computed(() => {
 })
 
 const checkAdminStatus = async () => {
+  if (auth.isDemo.value) { isAdmin.value = true; return }
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -264,6 +276,51 @@ const checkAdminStatus = async () => {
 const loadProjectsWithProgress = async () => {
   projectsLoading.value = true
   
+  if (auth.isDemo.value) {
+    try {
+      loadDemoData()
+      const boards = demoData.value.projects || []
+      const columns = demoData.value.columns || []
+      const tasksAll = demoData.value.tasks || []
+      const userId = auth.userId.value || 'demo-user-id'
+      const projectsWithProgress = boards.map((board) => {
+        const columnIds = columns.filter(c => c.board_id === board.id).map(c => c.id)
+        const tasksData = tasksAll.filter(t => columnIds.includes(t.column_id))
+        const totalTasks = tasksData.length
+        const completedTasks = tasksData.filter(task => {
+          const taskColumn = columns.find(col => col.id === task.column_id)
+          const columnTitle = taskColumn?.title?.toLowerCase() || ''
+          return (
+            columnTitle.includes('готов') || columnTitle.includes('выполн') || columnTitle.includes('done') || columnTitle.includes('complete') || task.is_completed === true
+          )
+        }).length
+        const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+        const members = board.members || []
+        return {
+          id: board.id,
+          title: board.title,
+          description: board.description,
+          background: board.background,
+          creator_id: board.creator_id,
+          created_at: board.created_at,
+          updated_at: board.updated_at,
+          totalTasks,
+          completedTasks,
+          completionRate,
+          members,
+          isPersonal: members.length === 1 && board.creator_id === userId
+        }
+      })
+      projects.value = projectsWithProgress.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    } catch (e) {
+      console.error('Ошибка демо загрузки проектов:', e)
+      projects.value = []
+    } finally {
+      projectsLoading.value = false
+    }
+    return
+  }
+
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError) {
@@ -462,6 +519,33 @@ const openProject = (project) => {
 // === ФУНКЦИИ ИЗ ВЕРСИИ ДРУГОГО СОТРУДНИКА ДЛЯ "МОИХ ЗАДАЧ" ===
 
 const loadTasks = async () => {
+  if (auth.isDemo.value) {
+    try {
+      loadDemoData()
+      const userId = auth.userId.value || 'demo-user-id'
+      const columnsById = Object.fromEntries((demoData.value.columns || []).map(c => [c.id, c]))
+      const boardsById = Object.fromEntries((demoData.value.projects || []).map(b => [b.id, b]))
+      const all = (demoData.value.tasks || []).map(t => {
+        const col = columnsById[t.column_id]
+        const board = col ? boardsById[col.board_id] : null
+        return {
+          ...t,
+          columns: {
+            title: col?.title || 'Без колонки',
+            boards: board ? { id: board.id, title: board.title, background: board.background, description: board.description } : null
+          }
+        }
+      })
+      tasks.value = all.filter(t => (t.assignee_id === userId || t.creator_id === userId) && t.is_completed === false)
+    } catch (e) {
+      console.error('Ошибка демо загрузки задач:', e)
+      tasks.value = []
+    } finally {
+      loading.value = false
+    }
+    return
+  }
+
   const userId = await getCurrentUserId()
   if (!userId) {
     loading.value = false
@@ -508,6 +592,20 @@ const getCurrentUserId = async () => {
 }
 
 const toggleTask = async (task) => {
+  if (auth.isDemo.value) {
+    try {
+      task.is_completed = !task.is_completed
+      tasks.value = tasks.value.filter(t => t.id !== task.id || !task.is_completed)
+      // persist demo change
+      loadDemoData()
+      const idx = (demoData.value.tasks || []).findIndex(t => t.id === task.id)
+      if (idx > -1) demoData.value.tasks[idx].is_completed = task.is_completed
+      saveDemoData()
+    } catch (e) {
+      console.error('Ошибка обновления задачи в демо:', e)
+    }
+    return
+  }
   try {
     const { error } = await supabase
       .from('tasks')

@@ -334,6 +334,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase.js'
 import { auth } from '../js/auth.js'
+import demoDataRaw from '../assets/demo_data.json'
 
 const router = useRouter()
 
@@ -350,6 +351,16 @@ const editMemberEmail = ref('')
 const currentUserEmail = ref('')
 const currentUserId = ref(null)
 const roles = ref({})
+
+// DEMO DATA SUPPORT
+const demoData = ref(null)
+function loadDemoData() {
+  const persisted = (() => { try { return JSON.parse(localStorage.getItem('demo_data') || 'null') } catch { return null } })()
+  demoData.value = persisted || demoDataRaw
+}
+function saveDemoData() {
+  try { localStorage.setItem('demo_data', JSON.stringify(demoData.value)) } catch {}
+}
 
 const modalNameInput = ref(null)
 
@@ -460,6 +471,34 @@ const deleteBoard = async (board) => {
 
   deleting.value = true
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      // Удаляем связанные данные из демо-хранилища
+      const projIndex = (demoData.value.projects || []).findIndex(p => p.id === board.id)
+      if (projIndex === -1) {
+        showToast('Проект не найден (демо)', 'error')
+        return
+      }
+      const columnIds = (demoData.value.columns || [])
+        .filter(c => c.board_id === board.id)
+        .map(c => c.id)
+      const columnIdSet = new Set(columnIds)
+      const taskIds = (demoData.value.tasks || [])
+        .filter(t => columnIdSet.has(t.column_id))
+        .map(t => t.id)
+      const taskIdSet = new Set(taskIds)
+
+      // attachments, tasks, columns, project
+      demoData.value.attachments = (demoData.value.attachments || []).filter(att => !taskIdSet.has(att.task_id))
+      demoData.value.tasks = (demoData.value.tasks || []).filter(t => !columnIdSet.has(t.column_id))
+      demoData.value.columns = (demoData.value.columns || []).filter(c => c.board_id !== board.id)
+      demoData.value.projects = (demoData.value.projects || []).filter(p => p.id !== board.id)
+      saveDemoData()
+
+      boards.value = boards.value.filter(b => b.id !== board.id)
+      showToast('Проект успешно удален (демо)', 'success')
+      return
+    }
     const { data: columns, error: columnsError } = await supabase
       .from('columns')
       .select('id')
@@ -527,6 +566,22 @@ const deleteBoard = async (board) => {
 }
 
 async function loadBoardMembersForEdit(boardId) {
+  if (auth.isDemo.value) {
+    try {
+      loadDemoData()
+      const proj = (demoData.value.projects || []).find(p => p.id === boardId)
+      editingBoardMembers.value = (proj?.members || []).map(m => ({
+        user_id: m.id,
+        email: m.email,
+        role: m.role || 'member'
+      }))
+      return
+    } catch (e) {
+      console.error('Demo: error loading board members for edit:', e)
+      editingBoardMembers.value = []
+      return
+    }
+  }
   try {
     const { data: membersData, error } = await supabase
       .from('user_roles')
@@ -552,6 +607,10 @@ async function loadBoardMembersForEdit(boardId) {
 }
 
 async function loadRoles() {
+  if (auth.isDemo.value) {
+    roles.value = { admin: 'admin', member: 'member' }
+    return
+  }
   try {
     const { data, error } = await supabase
       .from('roles')
@@ -572,6 +631,16 @@ async function loadRoles() {
 
 async function getCurrentUserEmail() {
   try {
+    if (auth.isDemo.value) {
+      const uid = await ensureUserId()
+      loadDemoData()
+      const member = (demoData.value.projects || [])
+        .flatMap(p => p.members || [])
+        .find(m => m.id === uid)
+      currentUserEmail.value = (member?.email || 'demo@example.com').toLowerCase()
+      currentUserId.value = uid
+      return
+    }
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user) {
       currentUserEmail.value = session.user.email.toLowerCase()
@@ -607,6 +676,21 @@ const addMember = async () => {
   }
 
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const existing = (demoData.value.projects || [])
+        .flatMap(p => p.members || [])
+        .find(m => (m.email || '').toLowerCase() === email)
+      const userId = existing?.id || ('user-' + Math.random().toString(36).slice(2, 10))
+      newBoard.value.members.push({
+        email: email,
+        userId,
+        role: 'member'
+      })
+      newMemberEmail.value = ''
+      showToast('Участник добавлен', 'success')
+      return
+    }
     const { data: user, error } = await supabase
       .from('users')
       .select('id, email')
@@ -658,6 +742,33 @@ const addEditMember = async () => {
   }
 
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const boardId = editingBoard.value.id
+      const projIndex = (demoData.value.projects || []).findIndex(p => p.id === boardId)
+      if (projIndex === -1) {
+        showToast('Проект не найден', 'error')
+        return
+      }
+      const existing = (demoData.value.projects[projIndex].members || [])
+        .find(m => (m.email || '').toLowerCase() === email)
+      if (existing) {
+        showToast('Этот участник уже добавлен', 'error')
+        return
+      }
+      const newId = 'user-' + Math.random().toString(36).slice(2, 10)
+      const memberObj = { id: newId, email, role: 'member', isCurrentUser: false }
+      demoData.value.projects[projIndex].members = [
+        ...(demoData.value.projects[projIndex].members || []),
+        memberObj
+      ]
+      saveDemoData()
+      editingBoardMembers.value.push({ user_id: newId, email, role: 'member' })
+      await loadBoardMembers()
+      editMemberEmail.value = ''
+      showToast('Участник добавлен', 'success')
+      return
+    }
     const { data: user, error } = await supabase
       .from('users')
       .select('id, email')
@@ -719,6 +830,21 @@ const removeEditMember = async (userId) => {
   }
 
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const boardId = editingBoard.value.id
+      const projIndex = (demoData.value.projects || []).findIndex(p => p.id === boardId)
+      if (projIndex === -1) {
+        showToast('Проект не найден', 'error')
+        return
+      }
+      demoData.value.projects[projIndex].members = (demoData.value.projects[projIndex].members || []).filter(m => m.id !== userId)
+      saveDemoData()
+      editingBoardMembers.value = editingBoardMembers.value.filter(m => m.user_id !== userId)
+      await loadBoardMembers()
+      showToast('Участник удален из проекта', 'success')
+      return
+    }
     const { error } = await supabase
       .from('user_roles')
       .delete()
@@ -764,6 +890,12 @@ const getBoardAdmin = (boardId) => {
 }
 
 async function ensureUserId() {
+  // In demo mode, ensure we have a stable demo user id
+  if (auth.isDemo.value) {
+    const uid = auth.userId.value || 'demo-user-id'
+    auth.setUser(uid)
+    return uid
+  }
   if (auth.userId.value) return auth.userId.value
   const { data } = await supabase.auth.getUser()
   const uid = data?.user?.id || null
@@ -774,6 +906,23 @@ async function ensureUserId() {
 async function loadBoardMembers() {
   const uid = await ensureUserId()
   if (!uid) return
+
+  // Demo-mode: derive members from demo projects
+  if (auth.isDemo.value) {
+    loadDemoData()
+    const membersMap = new Map()
+    const projects = demoData.value?.projects || []
+    projects.forEach(p => {
+      const list = (p.members || []).map(m => ({
+        user_id: m.id,
+        email: m.email,
+        role: m.role || 'member'
+      }))
+      membersMap.set(p.id, list)
+    })
+    boardMembers.value = membersMap
+    return
+  }
 
   try {
     const { data: membersData, error } = await supabase
@@ -820,6 +969,28 @@ async function loadBoards() {
   try {
     await loadRoles()
 
+    // Demo-mode offline loading
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const projects = demoData.value?.projects || []
+      // Only include projects where current user is a member
+      const myProjects = projects.filter(p => (p.members || []).some(m => m.id === uid))
+      boards.value = myProjects
+        .map(p => ({
+          id: p.id,
+          title: p.title,
+          description: p.description || null,
+          background: p.background || null,
+          creator_id: p.creator_id || uid,
+          created_at: p.created_at || new Date().toISOString()
+        }))
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+
+      // Populate members map for helper functions
+      await loadBoardMembers()
+      return
+    }
+
     const { data: userRoles, error: rolesError } = await supabase
       .from('user_roles')
       .select('board_id')
@@ -862,6 +1033,19 @@ async function createDefaultColumns(boardId) {
     { title: 'В работе', position: 2, color: '#a2b8a5' },
     { title: 'Готово', position: 3, color: '#c7d6c9' },
   ].map(c => ({ ...c, board_id: boardId }))
+
+  if (auth.isDemo.value) {
+    try {
+      loadDemoData()
+      const now = Date.now()
+      const withIds = defaults.map((c, idx) => ({ id: 'col-' + now + '-' + (idx + 1), ...c }))
+      demoData.value.columns = [ ...(demoData.value.columns || []), ...withIds ]
+      saveDemoData()
+    } catch (e) {
+      console.warn('Demo: error creating default columns:', e)
+    }
+    return
+  }
   
   try {
     const { error } = await supabase.from('columns').insert(defaults)
@@ -874,7 +1058,29 @@ async function createDefaultColumns(boardId) {
 async function addBoardMembers(boardId, members) {
   try {
     const uid = await ensureUserId()
-    
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const projIndex = (demoData.value.projects || []).findIndex(p => p.id === boardId)
+      if (projIndex === -1) throw new Error('Проект не найден')
+      const existing = demoData.value.projects[projIndex].members || []
+      const existingEmails = new Set(existing.map(m => (m.email || '').toLowerCase()))
+      const currentEmail = (currentUserEmail.value || 'demo@example.com').toLowerCase()
+      const resultMembers = [...existing]
+      if (!existing.some(m => m.id === uid)) {
+        resultMembers.push({ id: uid, email: currentEmail, role: 'admin', isCurrentUser: true })
+      }
+      members.forEach(m => {
+        const email = (m.email || '').toLowerCase()
+        if (!existingEmails.has(email)) {
+          resultMembers.push({ id: m.userId || ('user-' + Math.random().toString(36).slice(2, 10)), email, role: 'member', isCurrentUser: false })
+        }
+      })
+      demoData.value.projects[projIndex].members = resultMembers
+      saveDemoData()
+      await loadBoardMembers()
+      return
+    }
+
     if (!roles.value.admin || !roles.value.member) {
       throw new Error('Роли не загружены')
     }
@@ -911,19 +1117,44 @@ async function addBoardMembers(boardId, members) {
 }
 
 async function createBoard() {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-  
-  if (sessionError || !session) {
-    showToast('Пожалуйста, войдите в систему', 'error')
-    return
-  }
-  
-  const uid = session.user.id
   creating.value = true
   
   try {
+    if (auth.isDemo.value) {
+      const uid = await ensureUserId()
+      const now = new Date().toISOString()
+      const newId = 'demo-board-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+      loadDemoData()
+      const project = {
+        id: newId,
+        title: newBoard.value.name,
+        description: newBoard.value.description || null,
+        background: newBoard.value.color || null,
+        creator_id: uid,
+        created_at: now,
+        updated_at: now,
+        members: [
+          { id: uid, email: (currentUserEmail.value || 'demo@example.com'), role: 'admin', isCurrentUser: true },
+          ...newBoard.value.members.map(m => ({ id: m.userId || ('user-' + Math.random().toString(36).slice(2,10)), email: m.email, role: 'member', isCurrentUser: false }))
+        ],
+        isPersonal: newBoard.value.members.length === 0
+      }
+      demoData.value.projects = [ ...(demoData.value.projects || []), project ]
+      saveDemoData()
+      await createDefaultColumns(newId)
+      await loadBoards()
+      closeCreateModal()
+      showToast('Проект успешно создан!', 'success')
+      return
+    }
+
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session) {
+      showToast('Пожалуйста, войдите в систему', 'error')
+      return
+    }
+    const uid = session.user.id
     const now = new Date().toISOString()
-    
     const { data, error } = await supabase
       .from('boards')
       .insert({
@@ -943,11 +1174,8 @@ async function createBoard() {
     }
 
     await addBoardMembers(data.id, newBoard.value.members)
-
     await createDefaultColumns(data.id)
-    
     await loadBoards()
-    
     closeCreateModal()
     showToast('Проект успешно создан!', 'success')
 
@@ -963,6 +1191,27 @@ async function updateBoard() {
   updating.value = true
   
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const proj = (demoData.value.projects || []).find(p => p.id === editingBoard.value.id)
+      if (proj) {
+        proj.title = editingBoard.value.title
+        proj.description = editingBoard.value.description || null
+        proj.background = editingBoard.value.background || null
+        proj.updated_at = new Date().toISOString()
+        saveDemoData()
+      }
+      const boardIndex = boards.value.findIndex(b => b.id === editingBoard.value.id)
+      if (boardIndex !== -1) {
+        boards.value[boardIndex].title = editingBoard.value.title
+        boards.value[boardIndex].description = editingBoard.value.description
+        boards.value[boardIndex].background = editingBoard.value.background
+      }
+      await loadBoardMembers()
+      closeEditModal()
+      showToast('Проект успешно обновлен!', 'success')
+      return
+    }
     const { error } = await supabase
       .from('boards')
       .update({

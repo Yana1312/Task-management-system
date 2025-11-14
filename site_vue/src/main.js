@@ -8,6 +8,7 @@ import { supabase } from './lib/supabase.js'
 
 auth.initFromStorage()
 console.log('[main] initFromStorage userId:', auth.userId.value, 'avatarUrl:', auth.avatarUrl.value)
+auth.initDemoFromEnv()
 
 // Экспортируем для ручной проверки в консоли
 if (typeof window !== 'undefined') {
@@ -16,6 +17,10 @@ if (typeof window !== 'undefined') {
 
 async function bootstrapAvatar() {
   try {
+    if (auth.isDemo.value) {
+      await auth.fetchAvatar()
+      return
+    }
     if (!auth.userId.value) {
       const { data, error } = await supabase.auth.getUser()
       if (error) console.warn('[main] supabase.getUser error:', error)

@@ -515,6 +515,8 @@
 import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { supabase } from '../lib/supabase.js'
+import { auth } from '../js/auth.js'
+import demoDataRaw from '../assets/demo_data.json'
 
 const route = useRoute()
 const boardId = ref(route.params.id)
@@ -525,6 +527,16 @@ const boardMembers = ref([])
 const loading = ref(true)
 const currentUser = ref(null)
 const isAdmin = ref(false)
+const demoData = ref(null)
+
+function loadDemoData() {
+  const persisted = (() => { try { return JSON.parse(localStorage.getItem('demo_data') || 'null') } catch { return null } })()
+  demoData.value = persisted || demoDataRaw
+}
+
+function saveDemoData() {
+  try { localStorage.setItem('demo_data', JSON.stringify(demoData.value)) } catch {}
+}
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
@@ -579,7 +591,6 @@ const isTaskCompleted = computed(() => {
   return doneColumn && selectedTask.value.column_id === doneColumn.id
 })
 
-// Определяем колонки по их названиям
 const plannedColumn = computed(() => {
   return columns.value.find(col => 
     col.title.toLowerCase().includes('план') || 
@@ -619,6 +630,12 @@ const isDoneColumn = (columnId) => {
 
 const getCurrentUser = async () => {
   try {
+    if (auth.isDemo.value) {
+      const demoId = auth.userId.value || 'demo-user-id'
+      currentUser.value = { id: demoId, email: 'demo@example.com' }
+      isAdmin.value = true
+      return
+    }
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       currentUser.value = user
@@ -651,6 +668,7 @@ const getCurrentUser = async () => {
 }
 
 const checkAdminStatus = async () => {
+  if (auth.isDemo.value) { isAdmin.value = true; return }
   try {
     const { data: userRoles, error } = await supabase
       .from('user_roles')
@@ -677,6 +695,12 @@ const checkAdminStatus = async () => {
 
 const loadBoardMembers = async () => {
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const boardDemo = (demoData.value.projects || []).find(b => b.id === boardId.value)
+      boardMembers.value = boardDemo?.members?.map(m => ({ id: m.id, email: m.email })) || []
+      return
+    }
     const { data, error } = await supabase
       .from('user_roles')
       .select(`
@@ -769,7 +793,6 @@ const canChangeTaskStatus = (task) => {
   return task.assignee_id === currentUser.value.id
 }
 
-// Перемещение из "В планах" в "В работе"
 const moveToWork = async (task) => {
   if (!canChangeTaskStatus(task)) {
     showToast('Только исполнитель задачи может менять статус', 'warning')
@@ -787,6 +810,17 @@ const moveToWork = async (task) => {
   }
 
   try {
+    if (auth.isDemo.value) {
+      const taskIndex = tasks.value.findIndex(t => t.id === task.id)
+      if (taskIndex !== -1) {
+        tasks.value[taskIndex].column_id = workColumn.value.id
+      }
+      if (selectedTask.value && selectedTask.value.id === task.id) {
+        selectedTask.value.column_id = workColumn.value.id
+      }
+      showToast('Задача перемещена в работу (демо)', 'success')
+      return
+    }
     const { error } = await supabase
       .from('tasks')
       .update({ 
@@ -813,7 +847,6 @@ const moveToWork = async (task) => {
   }
 }
 
-// Перемещение из "В работе" в "Готово" (требует подтверждения)
 const moveToDone = async (task) => {
   if (!canChangeTaskStatus(task)) {
     showToast('Только исполнитель задачи может менять статус', 'warning')
@@ -836,6 +869,22 @@ const moveToDone = async (task) => {
       column_id: doneColumn.value.id,
       approval_status: 'pending',
       updated_at: new Date().toISOString()
+    }
+
+    if (auth.isDemo.value) {
+      const taskIndex = tasks.value.findIndex(t => t.id === task.id)
+      if (taskIndex !== -1) {
+        tasks.value[taskIndex].is_completed = true
+        tasks.value[taskIndex].column_id = doneColumn.value.id
+        tasks.value[taskIndex].approval_status = 'pending'
+      }
+      if (selectedTask.value && selectedTask.value.id === task.id) {
+        selectedTask.value.is_completed = true
+        selectedTask.value.column_id = doneColumn.value.id
+        selectedTask.value.approval_status = 'pending'
+      }
+      showToast('Задача отправлена на проверку администратору (демо)', 'success')
+      return
     }
 
     const { error } = await supabase
@@ -872,6 +921,19 @@ const approveTask = async (task) => {
   }
 
   try {
+    if (auth.isDemo.value) {
+      const taskIndex = tasks.value.findIndex(t => t.id === task.id)
+      if (taskIndex !== -1) {
+        tasks.value[taskIndex].approval_status = 'approved'
+        tasks.value[taskIndex].approval_comment = null
+      }
+      if (selectedTask.value && selectedTask.value.id === task.id) {
+        selectedTask.value.approval_status = 'approved'
+        selectedTask.value.approval_comment = null
+      }
+      showToast('Задача подтверждена! (демо)', 'success')
+      return
+    }
     const { error } = await supabase
       .from('tasks')
       .update({ 
@@ -924,10 +986,8 @@ const rejectTask = async () => {
   try {
     console.log('Отклонение задачи:', taskToReject.value.id)
     
-    // Находим колонку "В работе" или используем первую доступную колонку
     let targetColumnId = workColumn.value?.id
     
-    // Если колонка "В работе" не найдена, используем первую колонку кроме "Готово"
     if (!targetColumnId) {
       const availableColumn = columns.value.find(col => 
         col.id !== doneColumn.value?.id
@@ -935,7 +995,6 @@ const rejectTask = async () => {
       if (availableColumn) {
         targetColumnId = availableColumn.id
       } else {
-        // Если нет других колонок, используем текущую колонку задачи
         targetColumnId = taskToReject.value.column_id
       }
     }
@@ -949,6 +1008,24 @@ const rejectTask = async () => {
     }
 
     console.log('Данные для обновления:', updateData)
+    if (auth.isDemo.value) {
+      const taskIndex = tasks.value.findIndex(t => t.id === taskToReject.value.id)
+      if (taskIndex !== -1) {
+        tasks.value[taskIndex].is_completed = false
+        tasks.value[taskIndex].column_id = targetColumnId
+        tasks.value[taskIndex].approval_status = 'rejected'
+        tasks.value[taskIndex].approval_comment = rejectionComment.value
+      }
+      if (selectedTask.value && selectedTask.value.id === taskToReject.value.id) {
+        selectedTask.value.is_completed = false
+        selectedTask.value.column_id = targetColumnId
+        selectedTask.value.approval_status = 'rejected'
+        selectedTask.value.approval_comment = rejectionComment.value
+      }
+      showToast('Задача возвращена на доработку (демо)', 'success')
+      closeRejectModal()
+      return
+    }
 
     const { error } = await supabase
       .from('tasks')
@@ -960,7 +1037,6 @@ const rejectTask = async () => {
       throw error
     }
 
-    // Обновляем локальное состояние
     const taskIndex = tasks.value.findIndex(t => t.id === taskToReject.value.id)
     if (taskIndex !== -1) {
       tasks.value[taskIndex].is_completed = false
@@ -986,7 +1062,6 @@ const rejectTask = async () => {
   }
 }
 
-// Функции для админа (создание, редактирование, удаление)
 const openCreateModal = () => {
   if (!isAdmin.value) {
     showToast('Только администратор может создавать задачи', 'error')
@@ -1086,6 +1161,37 @@ const createTask = async () => {
       assigneeEmail = assigneeUser.email
     }
 
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const now = new Date().toISOString()
+      const newId = 'demo-task-' + Date.now() + '-' + Math.random().toString(36).slice(2,6)
+      const taskData = {
+        id: newId,
+        title: newTask.value.title,
+        description: newTask.value.description || null,
+        column_id: newTask.value.column_id,
+        position: tasks.value.length,
+        creator_id: currentUser.value.id,
+        assignee_id: assigneeId,
+        priority: newTask.value.priority || 'medium',
+        due_date: newTask.value.due_date || null,
+        is_completed: false,
+        approval_status: 'pending',
+        created_at: now
+      }
+      demoData.value.tasks = [ ...(demoData.value.tasks || []), taskData ]
+      try { localStorage.setItem('demo_data', JSON.stringify(demoData.value)) } catch {}
+      const updatedTask = {
+        ...taskData,
+        assignee_email: assigneeEmail,
+        creator_email: currentUser.value.email
+      }
+      tasks.value.push(updatedTask)
+      closeCreateModal()
+      showToast('Задача успешно создана (демо)', 'success')
+      return
+    }
+
     const taskData = {
       title: newTask.value.title,
       description: newTask.value.description || null,
@@ -1165,6 +1271,37 @@ const updateTask = async () => {
       assigneeEmail = assigneeUser.email
     }
 
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const idx = (demoData.value.tasks || []).findIndex(t => t.id === editingTask.value.id)
+      if (idx !== -1) {
+        demoData.value.tasks[idx] = {
+          ...demoData.value.tasks[idx],
+          title: editingTask.value.title,
+          description: editingTask.value.description || null,
+          column_id: editingTask.value.column_id,
+          assignee_id: assigneeId,
+          priority: editingTask.value.priority || 'medium',
+          due_date: editingTask.value.due_date || null,
+          updated_at: new Date().toISOString()
+        }
+        try { localStorage.setItem('demo_data', JSON.stringify(demoData.value)) } catch {}
+      }
+      const taskIndexLocal = tasks.value.findIndex(t => t.id === editingTask.value.id)
+      if (taskIndexLocal !== -1) {
+        tasks.value[taskIndexLocal].title = editingTask.value.title
+        tasks.value[taskIndexLocal].description = editingTask.value.description
+        tasks.value[taskIndexLocal].column_id = editingTask.value.column_id
+        tasks.value[taskIndexLocal].assignee_id = assigneeId
+        tasks.value[taskIndexLocal].assignee_email = assigneeEmail
+        tasks.value[taskIndexLocal].priority = editingTask.value.priority
+        tasks.value[taskIndexLocal].due_date = editingTask.value.due_date
+      }
+      closeEditModal()
+      showToast('Задача успешно обновлена (демо)', 'success')
+      return
+    }
+
     const { error } = await supabase
       .from('tasks')
       .update({
@@ -1216,14 +1353,23 @@ const deleteTask = async () => {
   
   deleting.value = true
   try {
-    // Сначала удаляем вложения задачи
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const taskId = editingTask.value.id
+      demoData.value.attachments = (demoData.value.attachments || []).filter(att => att.task_id !== taskId)
+      demoData.value.tasks = (demoData.value.tasks || []).filter(t => t.id !== taskId)
+      try { localStorage.setItem('demo_data', JSON.stringify(demoData.value)) } catch {}
+      tasks.value = tasks.value.filter(t => t.id !== taskId)
+      closeEditModal()
+      showToast('Задача успешно удалена (демо)', 'success')
+      return
+    }
     const { data: attachments } = await supabase
       .from('attachments')
       .select('*')
       .eq('task_id', editingTask.value.id)
 
     if (attachments && attachments.length > 0) {
-      // Удаляем файлы из storage
       const filePaths = attachments.map(att => att.file_path).filter(Boolean)
       if (filePaths.length > 0) {
         await supabase.storage
@@ -1231,14 +1377,12 @@ const deleteTask = async () => {
           .remove(filePaths)
       }
 
-      // Удаляем записи о вложениях
       await supabase
         .from('attachments')
         .delete()
         .eq('task_id', editingTask.value.id)
     }
 
-    // Затем удаляем саму задачу
     const { error } = await supabase
       .from('tasks')
       .delete()
@@ -1259,8 +1403,6 @@ const deleteTask = async () => {
   }
 }
 
-// === ФУНКЦИОНАЛ ПРИКРЕПЛЕНИЯ ФАЙЛОВ ===
-
 const formatFileSize = (bytes) => {
   if (bytes === 0) return '0 Bytes'
   const k = 1024
@@ -1271,6 +1413,9 @@ const formatFileSize = (bytes) => {
 
 const loadTaskAttachments = async (taskId) => {
   try {
+    if (auth.isDemo.value) {
+      return []
+    }
     const { data, error } = await supabase
       .from('attachments')
       .select('*')
@@ -1292,6 +1437,9 @@ const loadTaskAttachments = async (taskId) => {
 
 const loadTaskAttachmentsForAllTasks = async () => {
   try {
+    if (auth.isDemo.value) {
+      return
+    }
     if (tasks.value.length === 0) return
     
     const taskIds = tasks.value.map(t => t.id)
@@ -1358,6 +1506,10 @@ const uploadFiles = async (files) => {
   uploading.value = true
   
   try {
+    if (auth.isDemo.value) {
+      showToast('Загрузка файлов недоступна в демо-режиме', 'warning')
+      return
+    }
     for (const file of files) {
       if (file.size > 50 * 1024 * 1024) {
         showToast(`Файл "${file.name}" слишком большой (макс. 50MB)`, 'error')
@@ -1369,7 +1521,6 @@ const uploadFiles = async (files) => {
       const filePath = `${selectedTask.value.id}/${fileName}`
       
       try {
-        // Загружаем файл в Supabase Storage
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('task-attachments')
           .upload(filePath, file)
@@ -1380,12 +1531,10 @@ const uploadFiles = async (files) => {
           continue
         }
         
-        // Получаем публичный URL для скачивания
         const { data: urlData } = supabase.storage
           .from('task-attachments')
           .getPublicUrl(filePath)
         
-        // Сохраняем информацию о файле в базе данных
         const { data: attachmentData, error: attachmentError } = await supabase
           .from('attachments')
           .insert({
@@ -1401,7 +1550,6 @@ const uploadFiles = async (files) => {
           .single()
         
         if (attachmentError) {
-          // Если не удалось сохранить в БД, удаляем файл из storage
           await supabase.storage
             .from('task-attachments')
             .remove([filePath])
@@ -1442,8 +1590,11 @@ const uploadFiles = async (files) => {
 
 const downloadAttachment = async (attachment) => {
   try {
+    if (auth.isDemo.value) {
+      showToast('Скачивание файлов недоступно в демо-режиме', 'warning')
+      return
+    }
     if (attachment.file_url) {
-      // Используем прямой URL для скачивания
       const a = document.createElement('a')
       a.href = attachment.file_url
       a.download = attachment.filename
@@ -1453,7 +1604,6 @@ const downloadAttachment = async (attachment) => {
       document.body.removeChild(a)
       showToast('Файл скачивается', 'success')
     } else {
-      // Альтернативный способ через download
       const { data, error } = await supabase.storage
         .from('task-attachments')
         .download(attachment.file_path)
@@ -1474,7 +1624,6 @@ const downloadAttachment = async (attachment) => {
   } catch (error) {
     console.error('Ошибка скачивания файла:', error)
     
-    // Резервный вариант - скачать информацию о файле
     const message = `Файл "${attachment.filename}" не может быть скачан через веб-интерфейс.\n\nИнформация о файле:\n- Название: ${attachment.filename}\n- Размер: ${formatFileSize(attachment.file_size)}\n- Путь: ${attachment.file_path}\n\nДля работы с файлами используйте локальное приложение.`
     
     const blob = new Blob([message], { type: 'text/plain' })
@@ -1493,10 +1642,13 @@ const downloadAttachment = async (attachment) => {
 
 const deleteAttachment = async (attachmentId) => {
   try {
+    if (auth.isDemo.value) {
+      showToast('Удаление файлов недоступно в демо-режиме', 'warning')
+      return
+    }
     const attachment = selectedTask.value.attachments.find(a => a.id === attachmentId)
     if (!attachment) return
     
-    // Удаляем файл из storage
     if (attachment.file_path) {
       const { error: storageError } = await supabase.storage
         .from('task-attachments')
@@ -1507,7 +1659,6 @@ const deleteAttachment = async (attachmentId) => {
       }
     }
     
-    // Удаляем запись из базы данных
     const { error: dbError } = await supabase
       .from('attachments')
       .delete()
@@ -1538,6 +1689,11 @@ const showToast = (message, type = 'success') => {
 
 const loadBoard = async () => {
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      board.value = (demoData.value.projects || []).find(b => b.id === boardId.value) || null
+      return
+    }
     const { data, error } = await supabase
       .from('boards')
       .select('*')
@@ -1553,6 +1709,15 @@ const loadBoard = async () => {
 
 const loadColumns = async () => {
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      const cols = (demoData.value.columns || []).filter(c => c.board_id === boardId.value)
+      columns.value = cols
+      if (columns.value.length > 0 && !newTask.value.column_id) {
+        newTask.value.column_id = columns.value[0].id
+      }
+      return
+    }
     const { data, error } = await supabase
       .from('columns')
       .select('*')
@@ -1574,6 +1739,26 @@ const loadColumns = async () => {
 
 const loadTasks = async () => {
   try {
+    if (auth.isDemo.value) {
+      loadDemoData()
+      if (columns.value.length > 0) {
+        const columnIds = columns.value.map(col => col.id)
+        const membersById = {}
+        const boardDemo = (demoData.value.projects || []).find(b => b.id === boardId.value)
+        ;(boardDemo?.members || []).forEach(m => { membersById[m.id] = m })
+        const data = (demoData.value.tasks || []).filter(t => columnIds.includes(t.column_id))
+        tasks.value = data.map(task => ({
+          ...task,
+          assignee_email: membersById[task.assignee_id]?.email || 'demo@example.com',
+          creator_email: membersById[task.creator_id]?.email || 'demo@example.com',
+          attachments: []
+        }))
+        return
+      } else {
+        tasks.value = []
+        return
+      }
+    }
     if (columns.value.length > 0) {
       const columnIds = columns.value.map(col => col.id)
       
@@ -2388,56 +2573,4 @@ onMounted(() => {
   }
 }
 
-/* Адаптивность */
-@media (max-width: 768px) {
-  .kanban-wrap {
-    flex-direction: column;
-  }
-  
-  .kanban-column {
-    min-width: auto;
-  }
-  
-  .boards-modal {
-    width: 95%;
-    margin: 20px;
-  }
-  
-  .boards-modal-actions {
-    flex-direction: column;
-  }
-  
-  .item-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .task-status-controls {
-    margin-top: 8px;
-    align-self: flex-end;
-  }
-  
-  .user-status-actions {
-    justify-content: flex-start;
-    width: 100%;
-  }
-  
-  .file-upload-area {
-    padding: 20px;
-  }
-  
-  .task-actions {
-    flex-direction: column;
-  }
-  
-  .status-btn.large {
-    width: 100%;
-    text-align: center;
-  }
-  
-  .admin-actions {
-    justify-content: center;
-    width: 100%;
-  }
-}
 </style>
