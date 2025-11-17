@@ -34,6 +34,7 @@
                     <span class="item-title">{{ project.description || 'Без описания' }}</span>
                   </div>
                   <div class="boards-card-item muted">Создано: {{ formatDate(project.created_at) }}</div>
+                  <div class="boards-card-item muted">Окончание: {{ project.end_date ? formatDate(project.end_date) : 'Не указана' }}</div>
                   <div class="boards-card-item muted">
                     Участников: {{ project.members.length }}
                   </div>
@@ -51,9 +52,7 @@
                         :class="getProgressClass(project.completionRate)"
                       ></div>
                     </div>
-                    <div class="progress-stats">
-                      <span>Завершено: {{ project.completedTasks }}/{{ project.totalTasks }} задач</span>
-                    </div>
+                    
                   </div>
                 </div>
                 <div class="boards-card-footer">
@@ -85,6 +84,7 @@
                     <span class="item-title">{{ project.description || 'Без описания' }}</span>
                   </div>
                   <div class="boards-card-item muted">Создано: {{ formatDate(project.created_at) }}</div>
+                  <div class="boards-card-item muted">Окончание: {{ project.end_date ? formatDate(project.end_date) : 'Не указана' }}</div>
                   <div class="boards-card-item muted">
                     Участников: {{ project.members.length }}
                   </div>
@@ -105,9 +105,7 @@
                         :class="getProgressClass(project.completionRate)"
                       ></div>
                     </div>
-                    <div class="progress-stats">
-                      <span>Завершено: {{ project.completedTasks }}/{{ project.totalTasks }} задач</span>
-                    </div>
+                    
                   </div>
                 </div>
                 <div class="boards-card-footer">
@@ -379,84 +377,101 @@ const loadProjectsWithProgress = async () => {
 
     console.log('📋 Найдено досок:', boardsData?.length || 0)
 
+    // === Оптимизация загрузки: объединяем запросы ===
     const projectsWithProgress = []
 
-    // Для каждой доски считаем прогресс
+    // Загружаем участников для всех досок одним запросом
+    const { data: allMembers, error: allMembersError } = await supabase
+      .from('user_roles')
+      .select(`
+        board_id,
+        user_id,
+        users:user_id (email, id),
+        roles:role_id (name_role)
+      `)
+      .in('board_id', assignedIds)
+
+    if (allMembersError) {
+      console.error('❌ Ошибка загрузки участников для всех досок:', allMembersError)
+    }
+
+    // Загружаем колонки для всех досок одним запросом
+    const { data: allColumns, error: allColumnsError } = await supabase
+      .from('columns')
+      .select('id, title, board_id')
+      .in('board_id', assignedIds)
+
+    if (allColumnsError) {
+      console.error('❌ Ошибка загрузки колонок для всех досок:', allColumnsError)
+    }
+
+    console.log('📊 Всего колонок загружено:', allColumns?.length || 0)
+
+    // Готовим мапы для быстрых доступов
+    const membersByBoard = new Map()
+    ;(allMembers || []).forEach(item => {
+      if (!membersByBoard.has(item.board_id)) membersByBoard.set(item.board_id, [])
+      membersByBoard.get(item.board_id).push(item)
+    })
+
+    const columnsByBoard = new Map()
+    ;(allColumns || []).forEach(col => {
+      if (!columnsByBoard.has(col.board_id)) columnsByBoard.set(col.board_id, [])
+      columnsByBoard.get(col.board_id).push(col)
+    })
+
+    const allColumnIds = (allColumns || []).map(c => c.id)
+
+    let allTasksData = []
+    if (allColumnIds.length > 0) {
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('tasks')
+        .select('id, is_completed, column_id')
+        .in('column_id', allColumnIds)
+      if (tasksError) {
+        console.error('❌ Ошибка загрузки задач для всех досок:', tasksError)
+      } else {
+        allTasksData = tasksData || []
+      }
+    }
+
+    // Группировка задач по колонке
+    const tasksByColumn = new Map()
+    allTasksData.forEach(task => {
+      if (!tasksByColumn.has(task.column_id)) tasksByColumn.set(task.column_id, [])
+      tasksByColumn.get(task.column_id).push(task)
+    })
+
+    // Сборка проектов с прогрессом
     for (const board of boardsData) {
-      console.log(`🔄 Обрабатываем доску: ${board.title} (ID: ${board.id})`)
-      
       try {
-        // Получаем участников доски
-        const { data: membersData, error: membersError } = await supabase
-          .from('user_roles')
-          .select(`
-            user_id,
-            users:user_id (email, id),
-            roles:role_id (name_role)
-          `)
-          .eq('board_id', board.id)
+        const columnsData = columnsByBoard.get(board.id) || []
+        const columnIds = columnsData.map(c => c.id)
+        const boardTasks = columnIds.flatMap(cid => tasksByColumn.get(cid) || [])
 
-        if (membersError) {
-          console.error(`❌ Ошибка загрузки участников для доски ${board.id}:`, membersError)
-        }
+        const totalTasks = boardTasks.length
+        const completedTasks = boardTasks.filter(task => {
+          const taskColumn = columnsData.find(col => col.id === task.column_id)
+          const columnTitle = taskColumn?.title?.toLowerCase() || ''
 
-        // Получаем колонки доски
-        const { data: columnsData, error: columnsError } = await supabase
-          .from('columns')
-          .select('id, title')
-          .eq('board_id', board.id)
+          return (
+            columnTitle.includes('готов') ||
+            columnTitle.includes('выполн') ||
+            columnTitle.includes('done') ||
+            columnTitle.includes('complete') ||
+            task.is_completed === true
+          )
+        }).length
 
-        if (columnsError) {
-          console.error(`❌ Ошибка загрузки колонок для доски ${board.id}:`, columnsError)
-        }
+        
 
-        console.log(`📊 Колонки для доски ${board.title}:`, columnsData?.length || 0)
-
-        const columnIds = columnsData?.map(col => col.id) || []
-        let totalTasks = 0
-        let completedTasks = 0
-
-        // Получаем задачи доски если есть колонки
-        if (columnIds.length > 0) {
-          const { data: tasksData, error: tasksError } = await supabase
-            .from('tasks')
-            .select('id, is_completed, column_id')
-            .in('column_id', columnIds)
-
-          if (tasksError) {
-            console.error(`❌ Ошибка загрузки задач для доски ${board.id}:`, tasksError)
-          } else {
-            totalTasks = tasksData?.length || 0
-            
-            // Считаем завершенные задачи (в колонке "Готово" или is_completed = true)
-            completedTasks = tasksData?.filter(task => {
-              const taskColumn = columnsData?.find(col => col.id === task.column_id)
-              const columnTitle = taskColumn?.title?.toLowerCase() || ''
-              
-              return (
-                columnTitle.includes('готов') || 
-                columnTitle.includes('выполн') || 
-                columnTitle.includes('done') || 
-                columnTitle.includes('complete') ||
-                task.is_completed === true
-              )
-            }).length || 0
-          }
-        }
-
-        console.log(`📝 Задачи для доски ${board.title}: всего ${totalTasks}, завершено ${completedTasks}`)
-
-        // Расчет прогресса: (completedTasks / totalTasks) * 100
-        const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-
-        const members = membersData?.map(item => ({
+        const membersRaw = membersByBoard.get(board.id) || []
+        const members = membersRaw.map(item => ({
           id: item.user_id,
           email: item.users?.email,
           role: item.roles?.name_role,
           isCurrentUser: item.user_id === userId
-        })) || []
-
-        console.log(`👥 Участники доски ${board.title}:`, members.length)
+        }))
 
         projectsWithProgress.push({
           id: board.id,
@@ -466,18 +481,16 @@ const loadProjectsWithProgress = async () => {
           creator_id: board.creator_id,
           created_at: board.created_at,
           updated_at: board.updated_at,
+          end_date: board.end_date,
+          
           totalTasks,
           completedTasks,
-          completionRate,
+          completionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
           members,
           isPersonal: members.length === 1 && board.creator_id === userId
         })
-
-        console.log(`✅ Доска ${board.title} успешно обработана`)
-
       } catch (error) {
         console.error(`❌ Ошибка обработки доски ${board.id}:`, error)
-        // Продолжаем обработку других досок
       }
     }
 
@@ -739,10 +752,12 @@ onMounted(() => {
 }
 
 .boards-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   gap: 20px;
   margin-top: 15px;
+  padding-bottom: 8px; /* место под горизонтальную полосу прокрутки */
 }
 
 .boards-card {
@@ -755,7 +770,11 @@ onMounted(() => {
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* фиксируем высоту карточки, чтобы размер не менялся */
+  height: 340px;
+  /* для горизонтального скролла карточек */
+  flex: 0 0 320px;
+  min-width: 320px;
 }
 
 .boards-card:hover {
@@ -785,6 +804,7 @@ onMounted(() => {
   gap: 8px;
   margin-bottom: 15px;
   flex-grow: 1;
+  overflow: hidden; /* предотвращаем рост карточки из-за контента */
 }
 
 .boards-card-item {
@@ -803,6 +823,13 @@ onMounted(() => {
 
 .item-title {
   font-weight: 500;
+  /* обрезаем длинные описания и добавляем многоточие */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
 }
 
 .boards-empty {
@@ -810,7 +837,8 @@ onMounted(() => {
   opacity: 0.8;
   text-align: center;
   padding: 40px 20px;
-  grid-column: 1 / -1;
+  /* растягиваем на всю ширину контейнера при flex */
+  flex: 1 1 100%;
 }
 
 .boards-card-footer {
@@ -916,7 +944,7 @@ onMounted(() => {
 .tasks-container {
   display: flex;
   flex-direction: column;
-  height: 300px; 
+  height: auto;
   background:transparent;
 }
 
@@ -924,6 +952,7 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding-right: 5px;
+  max-height: 310px;
 }
 
 .tasks-scrollable::-webkit-scrollbar {
@@ -954,6 +983,8 @@ onMounted(() => {
   background: #b54b11;
   border-left: 3px solid #B54B11;
   transition: all 0.2s ease;
+  /* фиксируем минимальную высоту одной карточки задачи */
+  min-height: 80px;
 }
 
 .task-title {
@@ -1062,5 +1093,24 @@ onMounted(() => {
   text-align: center;
   padding: 20px;
   color: #E6D1A4;
+}
+
+/* горизонтальная полоса прокрутки для карточек проектов */
+.boards-row::-webkit-scrollbar {
+  height: 8px;
+}
+
+.boards-row::-webkit-scrollbar-track {
+  background: rgba(181, 75, 17, 0.1);
+  border-radius: 4px;
+}
+
+.boards-row::-webkit-scrollbar-thumb {
+  background: #CE7939;
+  border-radius: 4px;
+}
+
+.boards-row::-webkit-scrollbar-thumb:hover {
+  background: #B54B11;
 }
 </style>

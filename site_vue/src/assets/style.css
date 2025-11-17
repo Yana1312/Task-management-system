@@ -1432,6 +1432,12 @@ input[type="checkbox"]:checked + label {
   gap: 12px;
 }
 
+#boards-page .boards-color-field.boards-color-field-column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
 #boards-page .boards-color-preview {
   width: 40px;
   height: 40px;
@@ -1442,6 +1448,35 @@ input[type="checkbox"]:checked + label {
 
 #boards-page .boards-color-input {
   flex: 1;
+}
+
+#boards-page .sr-only-color-input {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Нативный color-picker как квадрат предпросмотра */
+#boards-page .boards-color-picker {
+  appearance: none;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+#boards-page .boards-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+#boards-page .boards-color-picker::-moz-color-swatch {
+  border: none;
+  border-radius: 6px;
 }
 
 #boards-page .boards-access-field {

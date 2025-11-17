@@ -30,6 +30,8 @@
                     <span class="item-title">{{ b.description || 'Без описания' }}</span>
                   </div>
                   <div class="boards-card-item muted">Создано: {{ formatDate(b.created_at) }}</div>
+                  <div class="boards-card-item muted">Окончание: {{ b.end_date ? formatDate(b.end_date) : 'Не указана' }}</div>
+              
                   <div class="boards-card-item muted">
                     Участников: {{ getBoardMembersCount(b.id) }}
                   </div>
@@ -72,6 +74,8 @@
                     <span class="item-title">{{ b.description || 'Без описания' }}</span>
                   </div>
                   <div class="boards-card-item muted">Создано: {{ formatDate(b.created_at) }}</div>
+                  <div class="boards-card-item muted">Окончание: {{ b.end_date ? formatDate(b.end_date) : 'Не указана' }}</div>
+              
                   <div class="boards-card-item muted">
                     Участников: {{ getBoardMembersCount(b.id) }}
                   </div>
@@ -125,12 +129,23 @@
                 </div>
                 
                 <div class="boards-modal-field">
+                  <label class="boards-modal-label">Дата окончания проекта *</label>
+                  <input 
+                    type="date"
+                    v-model="newBoard.end_date"
+                    class="boards-modal-input"
+                  />
+                </div>
+                
+                <div class="boards-modal-field">
                   <label class="boards-modal-label">Цвет проекта</label>
                   <div class="boards-color-field">
-                    <div 
-                      class="boards-color-preview" 
-                      :style="{ backgroundColor: newBoard.color }"
-                    ></div>
+                    <input 
+                      type="color"
+                      v-model="newBoard.color"
+                      class="boards-color-picker"
+                      title="Выбрать цвет"
+                    />
                     <input 
                       v-model="newBoard.color" 
                       class="boards-modal-input boards-color-input" 
@@ -188,7 +203,7 @@
               <button 
                 class="boards-modal-btn boards-modal-btn-create" 
                 @click="createBoard"
-                :disabled="!newBoard.name.trim() || creating"
+                :disabled="!newBoard.name.trim() || !newBoard.end_date || creating"
               >
                 {{ creating ? 'Создание...' : 'Создать проект' }}
               </button>
@@ -225,12 +240,23 @@
                 </div>
                 
                 <div class="boards-modal-field">
+                  <label class="boards-modal-label">Дата окончания проекта *</label>
+                  <input 
+                    type="date"
+                    v-model="editingBoard.end_date"
+                    class="boards-modal-input"
+                  />
+                </div>
+                
+                <div class="boards-modal-field">
                   <label class="boards-modal-label">Цвет проекта</label>
                   <div class="boards-color-field">
-                    <div 
-                      class="boards-color-preview" 
-                      :style="{ backgroundColor: editingBoard.background }"
-                    ></div>
+                    <input 
+                      type="color"
+                      v-model="editingBoard.background"
+                      class="boards-color-picker"
+                      title="Выбрать цвет"
+                    />
                     <input 
                       v-model="editingBoard.background" 
                       class="boards-modal-input boards-color-input" 
@@ -423,6 +449,7 @@ const openCreateModal = async () => {
   newBoard.value = {
     name: '',
     description: '',
+    end_date: '',
     color: '#B54B11',
     members: []
   }
@@ -447,7 +474,8 @@ const openEditModal = async (board) => {
     title: board.title,
     description: board.description || '',
     background: board.background || '#B54B11',
-    created_at: board.created_at
+    created_at: board.created_at,
+    end_date: board.end_date || ''
   }
   
   await loadBoardMembersForEdit(board.id)
@@ -982,7 +1010,8 @@ async function loadBoards() {
           description: p.description || null,
           background: p.background || null,
           creator_id: p.creator_id || uid,
-          created_at: p.created_at || new Date().toISOString()
+          created_at: p.created_at || new Date().toISOString(),
+          end_date: p.end_date || null
         }))
         .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 
@@ -1133,6 +1162,7 @@ async function createBoard() {
         creator_id: uid,
         created_at: now,
         updated_at: now,
+        end_date: newBoard.value.end_date || null,
         members: [
           { id: uid, email: (currentUserEmail.value || 'demo@example.com'), role: 'admin', isCurrentUser: true },
           ...newBoard.value.members.map(m => ({ id: m.userId || ('user-' + Math.random().toString(36).slice(2,10)), email: m.email, role: 'member', isCurrentUser: false }))
@@ -1164,6 +1194,7 @@ async function createBoard() {
         is_public: newBoard.value.members.length > 0,
         creator_id: uid,
         created_at: now,
+        end_date: newBoard.value.end_date || null,
       })
       .select()
       .single()
@@ -1198,6 +1229,7 @@ async function updateBoard() {
         proj.title = editingBoard.value.title
         proj.description = editingBoard.value.description || null
         proj.background = editingBoard.value.background || null
+        proj.end_date = editingBoard.value.end_date || null
         proj.updated_at = new Date().toISOString()
         saveDemoData()
       }
@@ -1206,6 +1238,7 @@ async function updateBoard() {
         boards.value[boardIndex].title = editingBoard.value.title
         boards.value[boardIndex].description = editingBoard.value.description
         boards.value[boardIndex].background = editingBoard.value.background
+        boards.value[boardIndex].end_date = editingBoard.value.end_date || null
       }
       await loadBoardMembers()
       closeEditModal()
@@ -1217,7 +1250,8 @@ async function updateBoard() {
       .update({
         title: editingBoard.value.title,
         description: editingBoard.value.description || null,
-        background: editingBoard.value.background || null
+        background: editingBoard.value.background || null,
+        end_date: editingBoard.value.end_date || null
       })
       .eq('id', editingBoard.value.id)
 
@@ -1228,6 +1262,7 @@ async function updateBoard() {
       boards.value[boardIndex].title = editingBoard.value.title
       boards.value[boardIndex].description = editingBoard.value.description
       boards.value[boardIndex].background = editingBoard.value.background
+      boards.value[boardIndex].end_date = editingBoard.value.end_date || null
     }
 
     await loadBoardMembers()
@@ -1256,6 +1291,90 @@ watch(showCreateModal, async (v) => {
 </script>
 
 <style scoped>
+.boards-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.boards-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.boards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  margin-top: 15px;
+}
+
+.boards-card {
+  background: #B54B11;
+  color: #E6D1A4;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  height: 340px; /* фиксированная высота как на главной */
+}
+
+.boards-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.boards-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.boards-pill {
+  background: rgba(230, 209, 164, 0.18);
+  color: #E6D1A4;
+  border-radius: 14px;
+  padding: 8px 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.boards-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 15px;
+  flex-grow: 1;
+  overflow: hidden; /* предотвращаем рост карточки */
+}
+
+.boards-card-item {
+  background: #480902;
+  color: #E6D1A4;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.boards-card-item.muted {
+  background: transparent;
+  opacity: 0.8;
+  padding: 0;
+  font-size: 0.9em;
+}
+
+.item-title {
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* показываем максимум две строки */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
 .boards-info-list {
   background: #f8f9fa;
   border-radius: 8px;
