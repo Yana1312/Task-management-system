@@ -137,22 +137,16 @@
           </div>
           <div v-else class="tasks-scrollable">
             <div 
-              v-for="task in tasks" 
+              v-for="task in sortedTasks" 
               :key="task.id" 
               class="task-item"
               :class="{ 
-                completed: task.is_completed,
                 urgent: isTaskUrgent(task.due_date),
                 'high-priority': task.priority === 'high'
               }"
             >
-              <input 
-                type="checkbox" 
-                :id="'task' + task.id"
-                :checked="task.is_completed"
-                @change="toggleTask(task)"
-              >
-              <label :for="'task' + task.id">
+              
+              <div class="task-content">
                 <span class="task-title">{{ task.title }}</span>
                 <div class="task-meta">
                   <span v-if="task.due_date" class="task-due-date" :class="getDueDateClass(task.due_date)">
@@ -167,7 +161,7 @@
                     {{ getProjectInfo(task) }}
                   </span>
                 </div>
-              </label>
+              </div>
             </div>
           </div>
         </div>
@@ -229,6 +223,16 @@ const filteredTasks = computed(() => {
         (task.is_completed && task.approval_status === 'rejected')
       )
     }
+  })
+})
+
+const sortedTasks = computed(() => {
+  return [...tasks.value].sort((a, b) => {
+    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 }
+    const priorityA = priorityOrder[a.priority] || 4
+    const priorityB = priorityOrder[b.priority] || 4
+    
+    return priorityA - priorityB
   })
 })
 
@@ -591,41 +595,7 @@ const getCurrentUserId = async () => {
   }
 }
 
-const toggleTask = async (task) => {
-  if (auth.isDemo.value) {
-    try {
-      task.is_completed = !task.is_completed
-      tasks.value = tasks.value.filter(t => t.id !== task.id || !task.is_completed)
-      // persist demo change
-      loadDemoData()
-      const idx = (demoData.value.tasks || []).findIndex(t => t.id === task.id)
-      if (idx > -1) demoData.value.tasks[idx].is_completed = task.is_completed
-      saveDemoData()
-    } catch (e) {
-      console.error('Ошибка обновления задачи в демо:', e)
-    }
-    return
-  }
-  try {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        is_completed: !task.is_completed,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', task.id)
 
-    if (error) throw error
-    
-    task.is_completed = !task.is_completed
-    
-    if (task.is_completed) {
-      tasks.value = tasks.value.filter(t => t.id !== task.id)
-    }
-  } catch (error) {
-    console.error('Ошибка обновления задачи:', error)
-  }
-}
 
 const isTaskUrgent = (dueDate) => {
   if (!dueDate) return false
@@ -947,6 +917,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   height: 300px; 
+  background:transparent;
 }
 
 .tasks-scrollable {
@@ -978,29 +949,22 @@ onMounted(() => {
   align-items: flex-start;
   margin-bottom: 8px;
   padding: 8px;
-  border-radius: 4px;
-  color: #480902;
-  background: #E6D1A4;
+  border-radius: 16px;
+  color: #e6d1a4;
+  background: #b54b11;
   border-left: 3px solid #B54B11;
   transition: all 0.2s ease;
 }
 
-.task-item input[type="checkbox"] {
-  margin-right: 8px;
-  margin-top: 2px;
-}
-
-.task-item label {
-  margin: 0;
-  font-size: 0.9em;
-  flex: 1;
-}
-
 .task-title {
-  display: block;
+  display: flex;
   font-weight: 500;
   margin-bottom: 4px;
   word-break: break-word;
+}
+
+.task-content {
+  flex:1;
 }
 
 .task-meta {
@@ -1065,6 +1029,7 @@ onMounted(() => {
 
 .task-project {
   margin-top: 2px;
+  display:flex;
 }
 
 .project-badge {
