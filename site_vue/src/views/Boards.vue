@@ -115,18 +115,26 @@
                     ref="modalNameInput"
                     v-model="newBoard.name" 
                     class="boards-modal-input" 
-                    placeholder="Введите название проекта"
+                    placeholder="Введите название проекта (макс. 50 символов)"
+                    maxlength="50"
                   />
+                  <div class="input-counter">
+                    {{ newBoard.name.length }}/50
+                  </div>
                 </div>
                 
                 <div class="boards-modal-field">
-                  <label class="boards-modal-label">Описание</label>
-                  <textarea 
-                    v-model="newBoard.description" 
-                    class="boards-modal-textarea" 
-                    placeholder="Краткое описание проекта"
-                  ></textarea>
+                <label class="boards-modal-label">Описание</label>
+                <textarea 
+                  v-model="newBoard.description" 
+                  class="boards-modal-textarea" 
+                  placeholder="Краткое описание проекта (макс. 200 символов)"
+                  maxlength="200"
+                ></textarea>
+                <div class="input-counter">
+                  {{ newBoard.description.length }}/200
                 </div>
+              </div>
                 
                 <div class="boards-modal-field">
                   <label class="boards-modal-label">Дата окончания проекта *</label>
@@ -226,17 +234,25 @@
                   <input 
                     v-model="editingBoard.title" 
                     class="boards-modal-input" 
-                    placeholder="Введите название проекта"
+                    placeholder="Введите название проекта (макс. 50 символов)"
+                    maxlength="50"
                   />
+                  <div class="input-counter">
+                    {{ editingBoard.title.length }}/50
+                  </div>
                 </div>
-                
+
                 <div class="boards-modal-field">
                   <label class="boards-modal-label">Описание</label>
                   <textarea 
                     v-model="editingBoard.description" 
                     class="boards-modal-textarea" 
-                    placeholder="Краткое описание проекта"
+                    placeholder="Краткое описание проекта (макс. 200 символов)"
+                    maxlength="200"
                   ></textarea>
+                  <div class="input-counter">
+                    {{ editingBoard.description.length }}/200
+                  </div>
                 </div>
                 
                 <div class="boards-modal-field">
@@ -1349,7 +1365,7 @@ watch(showCreateModal, async (v) => {
   gap: 8px;
   margin-bottom: 15px;
   flex-grow: 1;
-  overflow: hidden; /* предотвращаем рост карточки */
+  overflow: hidden;
 }
 
 .boards-card-item {
@@ -1369,7 +1385,7 @@ watch(showCreateModal, async (v) => {
 .item-title {
   font-weight: 500;
   display: -webkit-box;
-  -webkit-line-clamp: 2; /* показываем максимум две строки */
+  -webkit-line-clamp: 2; 
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
