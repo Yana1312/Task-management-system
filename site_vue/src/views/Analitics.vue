@@ -175,6 +175,47 @@
           </div>
         </div>
       </div>
+
+      <div class="workload-chart">
+    <div v-for="user in userWorkload" :key="user.id" class="workload-item">
+      <div class="user-info">
+        <div class="user-avatar">
+          {{ user.username.charAt(0).toUpperCase() }}
+        </div>
+        <div class="user-details">
+          <strong>{{ user.username }}</strong>
+          <span>{{ user.email }}</span>
+        </div>
+      </div>
+      <div class="workload-stats">
+        <div class="stat">
+          <span class="stat-value">{{ user.active_tasks }}</span>
+          <span class="stat-label">активных</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">{{ user.completed_tasks }}</span>
+          <span class="stat-label">выполнено</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">{{ user.overdue_tasks }}</span>
+          <span class="stat-label">просрочено</span>
+        </div>
+      </div>
+      <div class="workload-bar">
+      </div>
+      <div class="recent-tasks">
+        <div v-for="task in user.recent_tasks" :key="task.id" class="recent-task-item">
+          <span class="task-title" :class="{ 'completed': task.is_completed }">
+            {{ task.title }}
+          </span>
+          <span v-if="task.due_date" class="task-due-date">
+            {{ new Date(task.due_date).toLocaleDateString() }}
+          </span>
+          <i v-if="task.is_completed" class="fas fa-check completed-icon"></i>
+        </div>
+      </div>
+    </div>
+  </div>
     </div>
   </div>
 </template>
@@ -342,77 +383,85 @@ export default {
       }
     }
 
+    
+
     const loadUserWorkload = async () => {
-      const days = parseInt(selectedPeriod.value)
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - days)
+  const days = parseInt(selectedPeriod.value)
+  const startDate = new Date()
+  startDate.setDate(startDate.getDate() - days)
 
-      try {
-        const userWorkloadMap = new Map()
+  try {
+    const userWorkloadMap = new Map()
 
-        const workloadPromises = availableUsers.value.map(async (user) => {
-          if (selectedTeam.value !== 'all' && user.id !== selectedTeam.value) {
-            return null
-          }
-
-          let tasksQuery = supabase
-            .from('tasks')
-            .select(`
-              *,
-              columns!inner (
-                board_id
-              )
-            `)
-            .eq('assignee_id', user.id)
-            .gte('created_at', startDate.toISOString())
-
-          if (selectedProject.value !== 'all') {
-            tasksQuery = tasksQuery.eq('columns.board_id', selectedProject.value)
-          }
-
-          const { data: userTasks, error: tasksError } = await tasksQuery
-
-          if (tasksError) throw tasksError
-
-          const activeTasks = userTasks?.filter(task => !task.is_completed)?.length || 0
-          const completedTasks = userTasks?.filter(task => task.is_completed)?.length || 0
-          const overdueTasks = userTasks?.filter(task => 
-            !task.is_completed && 
-            task.due_date && 
-            new Date(task.due_date) < new Date()
-          )?.length || 0
-
-          const totalTasks = activeTasks + completedTasks + overdueTasks
-          const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-          const overdueRate = totalTasks > 0 ? Math.round((overdueTasks / totalTasks) * 100) : 0
-
-          return {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            active_tasks: activeTasks,
-            completed_tasks: completedTasks,
-            overdue_tasks: overdueTasks,
-            completion_rate: completionRate,
-            overdue_rate: overdueRate
-          }
-        })
-
-        const results = await Promise.all(workloadPromises)
-        
-        const validResults = results.filter(user => user !== null)
-        
-        validResults.forEach(user => {
-          userWorkloadMap.set(user.id, user)
-        })
-
-        userWorkload.value = Array.from(userWorkloadMap.values())
-
-      } catch (error) {
-        console.error('Ошибка в loadUserWorkload:', error)
-        throw error
+    const workloadPromises = availableUsers.value.map(async (user) => {
+      if (selectedTeam.value !== 'all' && user.id !== selectedTeam.value) {
+        return null
       }
-    }
+
+      let tasksQuery = supabase
+        .from('tasks')
+        .select(`
+          *,
+          columns!inner (
+            board_id
+          )
+        `)
+        .eq('assignee_id', user.id)
+        .gte('created_at', startDate.toISOString())
+
+      if (selectedProject.value !== 'all') {
+        tasksQuery = tasksQuery.eq('columns.board_id', selectedProject.value)
+      }
+
+      const { data: userTasks, error: tasksError } = await tasksQuery
+
+      if (tasksError) throw tasksError
+
+      const activeTasks = userTasks?.filter(task => !task.is_completed)?.length || 0
+      const completedTasks = userTasks?.filter(task => task.is_completed)?.length || 0
+      const overdueTasks = userTasks?.filter(task => 
+        !task.is_completed && 
+        task.due_date && 
+        new Date(task.due_date) < new Date()
+      )?.length || 0
+
+      const totalTasks = activeTasks + completedTasks + overdueTasks
+      const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+      const overdueRate = totalTasks > 0 ? Math.round((overdueTasks / totalTasks) * 100) : 0
+
+      return {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        active_tasks: activeTasks,
+        completed_tasks: completedTasks,
+        overdue_tasks: overdueTasks,
+        completion_rate: completionRate,
+        overdue_rate: overdueRate,
+        recent_tasks: userTasks?.slice(0, 5).map(task => ({
+          id: task.id,
+          title: task.title,
+          is_completed: task.is_completed,
+          due_date: task.due_date
+        })) || []
+      }
+    })
+
+    const results = await Promise.all(workloadPromises)
+    
+    const validResults = results.filter(user => user !== null)
+    
+    validResults.forEach(user => {
+      userWorkloadMap.set(user.id, user)
+    })
+
+    userWorkload.value = Array.from(userWorkloadMap.values())
+
+  } catch (error) {
+    console.error('Ошибка в loadUserWorkload:', error)
+    throw error
+  }
+}
 
     const loadPriorityDistribution = async () => {
       const days = parseInt(selectedPeriod.value)
@@ -919,20 +968,131 @@ export default {
   opacity: 0.8;
 }
 
+.recent-tasks {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.recent-task-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(206, 121, 57, 0.1);
+  font-size: 0.8em;
+}
+
+.recent-task-item:last-child {
+  border-bottom: none;
+}
+
+.task-title {
+  flex: 1;
+  color: #E6D1A4;
+}
+
+.task-title.completed {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.task-due-date {
+  color: rgba(230, 209, 164, 0.6);
+  font-size: 0.75em;
+}
+
+.completed-icon {
+  color: #4CAF50;
+  font-size: 0.8em;
+}
+
+.workload-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(206, 121, 57, 0.3);
+  flex-wrap: wrap;
+}
+
+.workload-item:last-child {
+  border-bottom: none;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #B54B11 0%, #CE7939 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: #E6D1A4;
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-details strong {
+  color: #E6D1A4;
+}
+
+.user-details span {
+  font-size: 0.8em;
+  color: #E6D1A4;
+  opacity: 0.7;
+}
+
+.workload-stats {
+  display: flex;
+  gap: 15px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.stat-value {
+  font-weight: bold;
+  color: #E6D1A4;
+  font-size: 1.1em;
+}
+
+.stat-label {
+  font-size: 0.7em;
+  color: #E6D1A4;
+  opacity: 0.7;
+}
+
+.workload-bar {
+  flex: 1;
+  max-width: 200px;
+}
+
+.workload-progress {
+  height: 8px;
+  background: rgba(72, 9, 2, 0.6);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+}
+
+
+
 @media (max-width: 768px) {
-  .analytics-sections {
-    grid-template-columns: 1fr;
-  }
-  
-  .metrics-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .analytics-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
   .workload-item {
     flex-direction: column;
     align-items: stretch;
@@ -946,5 +1106,12 @@ export default {
   .workload-bar {
     max-width: none;
   }
+  
+  .recent-task-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
 }
+
 </style>
