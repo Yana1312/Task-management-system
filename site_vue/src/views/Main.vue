@@ -771,7 +771,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   /* фиксируем высоту карточки, чтобы размер не менялся */
-  height: 340px;
+  height: 390px;
   /* для горизонтального скролла карточек */
   flex: 0 0 320px;
   min-width: 320px;

@@ -256,7 +256,7 @@ async function loadProfile() {
     {
       const res = await supabase
         .from('users')
-        .select('id, email, username, avatar_url')
+        .select('id, email, username, avatar_url, tg_username')
         .eq('id', uid)
         .maybeSingle()
       row = res.data
@@ -271,7 +271,7 @@ async function loadProfile() {
     if (!row) {
       const { data: byEmailRow, error: byEmailErr } = await supabase
         .from('users')
-        .select('id, email, username, avatar_url')
+        .select('id, email, username, avatar_url, tg_username')
         .eq('email', email)
         .maybeSingle()
       if (byEmailErr) {
@@ -298,7 +298,7 @@ async function loadProfile() {
 
       const { data: createdRow, error: loadErr } = await supabase
         .from('users')
-        .select('id, email, username, avatar_url')
+        .select('id, email, username, avatar_url, tg_username')
         .eq('id', uid)
         .maybeSingle()
       if (loadErr) {
